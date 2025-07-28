@@ -1,0 +1,81 @@
+package com.ai.hybridsearch.controller;
+
+import com.ai.hybridsearch.dto.SearchResult;
+import com.ai.hybridsearch.service.HybridSearchService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/search")
+@CrossOrigin(origins = "*")
+public class SearchController {
+    
+    @Autowired
+    private HybridSearchService hybridSearchService;
+    
+    @GetMapping("/hybrid")
+    public ResponseEntity<List<SearchResult>> hybridSearch(
+            @RequestParam String query,
+            @RequestParam(required = false) String category,
+            @RequestParam(defaultValue = "10") int limit) {
+        
+        List<SearchResult> results = hybridSearchService.hybridSearch(query, category, limit);
+        return ResponseEntity.ok(results);
+    }
+    
+    @GetMapping("/keyword")
+    public ResponseEntity<List<SearchResult>> keywordSearch(
+            @RequestParam String query,
+            @RequestParam(required = false) String category,
+            @RequestParam(defaultValue = "10") int limit) {
+        
+        List<SearchResult> results = hybridSearchService.performKeywordSearch(query, category, limit);
+        return ResponseEntity.ok(results);
+    }
+    
+    @PostMapping("/boolean")
+    public ResponseEntity<List<SearchResult>> booleanSearch(
+            @RequestBody Map<String, Object> searchRequest) {
+        
+        @SuppressWarnings("unchecked")
+        List<String> mustHave = (List<String>) searchRequest.get("mustHave");
+        @SuppressWarnings("unchecked")
+        List<String> shouldHave = (List<String>) searchRequest.get("shouldHave");
+        @SuppressWarnings("unchecked")
+        List<String> mustNotHave = (List<String>) searchRequest.get("mustNotHave");
+        String category = (String) searchRequest.get("category");
+        Integer limit = (Integer) searchRequest.getOrDefault("limit", 10);
+        
+        List<SearchResult> results = hybridSearchService.searchWithBoolean(
+            mustHave, shouldHave, mustNotHave, category, limit
+        );
+        return ResponseEntity.ok(results);
+    }
+    
+    @GetMapping("/advanced")
+    public ResponseEntity<List<SearchResult>> advancedSearch(
+            @RequestParam String query,
+            @RequestParam(required = false) String category,
+            @RequestParam(defaultValue = "false") boolean useFuzzy,
+            @RequestParam(defaultValue = "false") boolean usePhrase,
+            @RequestParam(defaultValue = "10") int limit) {
+        
+        List<SearchResult> results = hybridSearchService.advancedHybridSearch(
+            query, category, useFuzzy, usePhrase, limit
+        );
+        return ResponseEntity.ok(results);
+    }
+    
+    @GetMapping("/category/{category}")
+    public ResponseEntity<List<SearchResult>> searchByCategory(
+            @PathVariable String category,
+            @RequestParam(defaultValue = "10") int limit) {
+        
+        List<SearchResult> results = hybridSearchService.searchByCategory(category, limit);
+        return ResponseEntity.ok(results);
+    }
+}

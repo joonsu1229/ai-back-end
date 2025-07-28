@@ -1,0 +1,29 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://ep-snowy-hill-xxxx-pooler.ap-southeast-1.aws.neon.tech:5432/neondb
+    username: xxx
+    password: xxx
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    show-sql: true
+
+# LangChain Configuration
+langchain:
+  openai:
+    api-key: ${OPENAI_API_KEY:your-api-key-here}
+  embedding:
+    model: all-minilm-l6-v2
+
+server:
+  port: 8080
+
+logging:
+  level:
+    com.example.hybridsearch: DEBUG
