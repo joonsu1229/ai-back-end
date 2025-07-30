@@ -42,11 +42,11 @@ public class HybridSearchService {
                 .collect(Collectors.toList());
 
         float[] embedding = embeddingService.embed(query);
-        List<Document> sementicDocs = (category != null && !category.isEmpty())
+        List<Document> semanticDocs = (category != null && !category.isEmpty())
                 ? vectorSearchService.searchByEmbeddingAndCategory(embedding, category, limit)
                 : vectorSearchService.searchByEmbedding(embedding, limit);
-        List<SearchResult> searchResults = sementicDocs.stream()
-        .map(doc -> new SearchResult(doc, 1.0, "sementic"))
+        List<SearchResult> searchResults = semanticDocs.stream()
+        .map(doc -> new SearchResult(doc, 1.0, "semantic"))
         .collect(Collectors.toList());
 
         // 3. 결과 병합
@@ -58,14 +58,14 @@ public class HybridSearchService {
         return rerankerService.rerankWithCategoryBoost(combined, query, category, limit);
     }
     
-    public List<SearchResult> sementicSearch(String query, String category, int limit) {
+    public List<SearchResult> semanticSearch(String query, String category, int limit) {
         float[] embedding = embeddingService.embed(query);
-        List<Document> sementicDocs = (category != null && !category.isEmpty())
+        List<Document> semanticDocs = (category != null && !category.isEmpty())
                 ? vectorSearchService.searchByEmbeddingAndCategory(embedding, category, limit)
                 : vectorSearchService.searchByEmbedding(embedding, limit);
 
-        return sementicDocs.stream()
-            .map(doc -> new SearchResult(doc, 1.0, "sementic"))
+        return semanticDocs.stream()
+            .map(doc -> new SearchResult(doc, 1.0, "semantic"))
             .collect(Collectors.toList());
     }    
     
