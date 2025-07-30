@@ -131,6 +131,16 @@ public class DocumentService {
         return ResponseEntity.notFound().build();
     }
 
+    @SuppressWarnings("unchecked")
+    public List<Document> findByCategory(String category) {
+        Query query = entityManager.createQuery(
+            "SELECT d FROM Document d WHERE d.category = ?1",
+            Document.class
+        );
+        query.setParameter(1, category);
+        return query.getResultList();
+    }
+
     private String floatArrayToVectorString(float[] array) {
         StringBuilder sb = new StringBuilder();
         sb.append("[");

@@ -2,7 +2,6 @@ package com.ai.hybridsearch.service;
 
 import com.ai.hybridsearch.dto.SearchResult;
 import com.ai.hybridsearch.entity.Document;
-import com.ai.hybridsearch.repository.DocumentRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -13,13 +12,16 @@ import java.util.stream.Collectors;
 public class HybridSearchService {
     
     @Autowired
-    private DocumentRepository documentRepository;
+    private DocumentService documentService;    
     
     @Autowired
     private QueryBuilderService queryBuilderService;
     
     @Autowired
     private RerankerService rerankerService;
+
+    @Autowired
+    private EmbeddingService embeddingService; // LangChain4j용
 
     private final VectorSearchService vectorSearchService;
 
@@ -29,51 +31,67 @@ public class HybridSearchService {
 
     public List<SearchResult> hybridSearch(String query, String category, int limit) {
         // 1. 키워드 기반 검색
-        String keywordQuery = queryBuilderService.buildFullTextQuery(query);
+        String lexicalQuery = queryBuilderService.buildFullTextQuery(query);
 
-        List<Document> keywordDocs = (category != null && !category.isEmpty())
-                ? documentRepository.findByFullTextSearchAndCategory(keywordQuery, category, limit * 2)
-                : documentRepository.findByFullTextSearch(keywordQuery, limit * 2);
+        List<Document> lexicalDocs = (category != null && !category.isEmpty())
+                ? documentService.findByFullTextSearchAndCategory(lexicalQuery, category, limit * 2)
+                : documentService.findByFullTextSearch(lexicalQuery, limit * 2);
 
-        List<SearchResult> keywordResults = keywordDocs.stream()
-                .map(doc -> new SearchResult(doc, 1.0, "keyword"))
+        List<SearchResult> lexicalResults = lexicalDocs.stream()
+                .map(doc -> new SearchResult(doc, 1.0, "lexical"))
                 .collect(Collectors.toList());
 
-        // 2. 임베딩 기반 검색
-        List<SearchResult> vectorResults = vectorSearchService.searchByEmbedding(query, category, limit * 2);
+        float[] embedding = embeddingService.embed(query);
+        List<Document> sementicDocs = (category != null && !category.isEmpty())
+                ? vectorSearchService.searchByEmbeddingAndCategory(embedding, category, limit)
+                : vectorSearchService.searchByEmbedding(embedding, limit);
+        List<SearchResult> searchResults = sementicDocs.stream()
+        .map(doc -> new SearchResult(doc, 1.0, "sementic"))
+        .collect(Collectors.toList());
 
         // 3. 결과 병합
         List<SearchResult> combined = new ArrayList<>();
-        combined.addAll(keywordResults);
-        combined.addAll(vectorResults);
+        combined.addAll(lexicalResults);
+        combined.addAll(searchResults);
 
         // 4. 재정렬 (유사도 기준 reranking)
         return rerankerService.rerankWithCategoryBoost(combined, query, category, limit);
     }
     
-    public List<SearchResult> performKeywordSearch(String query, String category, int limit) {
+    public List<SearchResult> sementicSearch(String query, String category, int limit) {
+        float[] embedding = embeddingService.embed(query);
+        List<Document> sementicDocs = (category != null && !category.isEmpty())
+                ? vectorSearchService.searchByEmbeddingAndCategory(embedding, category, limit)
+                : vectorSearchService.searchByEmbedding(embedding, limit);
+
+        return sementicDocs.stream()
+            .map(doc -> new SearchResult(doc, 1.0, "sementic"))
+            .collect(Collectors.toList());
+    }    
+    
+    public List<SearchResult> lexicalSearch(String query, String category, int limit) {
         String processedQuery = queryBuilderService.buildFullTextQuery(query);
-        
+
         List<Document> documents;
         if (category != null && !category.isEmpty()) {
-            documents = documentRepository.findByFullTextSearchAndCategory(processedQuery, category, limit);
+            documents = documentService.findByFullTextSearchAndCategory(processedQuery, category, limit);
         } else {
-            documents = documentRepository.findByFullTextSearch(processedQuery, limit);
+            documents = documentService.findByFullTextSearch(processedQuery, limit);
         }
         
         return documents.stream()
-            .map(doc -> new SearchResult(doc, 1.0, "keyword"))
+            .map(doc -> new SearchResult(doc, 1.0, "lexical"))
             .collect(Collectors.toList());
     }
     
     public List<SearchResult> searchWithBoolean(List<String> mustHave, List<String> shouldHave, 
                                                List<String> mustNotHave, String category, int limit) {
         String booleanQuery = queryBuilderService.buildBooleanQuery(mustHave, shouldHave, mustNotHave);
-        return performKeywordSearch(booleanQuery, category, limit);
+        return lexicalSearch(booleanQuery, category, limit);
     }
     
     public List<SearchResult> searchByCategory(String category, int limit) {
-        List<Document> documents = documentRepository.findByCategory(category);
+        List<Document> documents = documentService.findByCategory(category);
         return documents.stream()
             .limit(limit)
             .map(doc -> new SearchResult(doc, 1.0, "category"))
@@ -86,17 +104,29 @@ public class HybridSearchService {
         
         // 정확한 매칭
         String exactQuery = queryBuilderService.buildFullTextQuery(query);
-        List<SearchResult> exactResults = performKeywordSearch(exactQuery, category, limit);
+        List<SearchResult> exactResults = lexicalSearch(exactQuery, category, limit);
         exactResults.forEach(result -> {
             result.setScore(result.getScore() * 1.0); // 정확한 매칭에 높은 가중치
             result.setSearchType("exact");
         });
+
+        // 2. 임베딩 기반 검색
+        List<SearchResult> vectorResults = vectorSearchService.semanticSearch(query, category, limit * 2);
+        vectorResults.forEach(result -> {
+            result.setScore(result.getScore() * 1.0); // 정확한 매칭에 높은 가중치
+            result.setSearchType("exact");
+        });
+
+        // 3. 결과 병합
+        List<SearchResult> combined = new ArrayList<>();
         allResults.addAll(exactResults);
+        allResults.addAll(vectorResults);
+
         
         // 구문 검색 (요청시)
         if (usePhrase) {
             String phraseQuery = queryBuilderService.buildPhraseQuery(query);
-            List<SearchResult> phraseResults = performKeywordSearch(phraseQuery, category, limit);
+            List<SearchResult> phraseResults = lexicalSearch(phraseQuery, category, limit);
             phraseResults.forEach(result -> {
                 result.setScore(result.getScore() * 0.9);
                 result.setSearchType("phrase");
@@ -107,7 +137,7 @@ public class HybridSearchService {
         // 퍼지 검색 (요청시)
         if (useFuzzy) {
             String fuzzyQuery = queryBuilderService.buildFuzzyQuery(query);
-            List<SearchResult> fuzzyResults = performKeywordSearch(fuzzyQuery, category, limit);
+            List<SearchResult> fuzzyResults = lexicalSearch(fuzzyQuery, category, limit);
             fuzzyResults.forEach(result -> {
                 result.setScore(result.getScore() * 0.7);
                 result.setSearchType("fuzzy");

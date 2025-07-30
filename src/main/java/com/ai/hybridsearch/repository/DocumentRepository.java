@@ -12,37 +12,4 @@ import java.util.List;
 @Repository
 public interface DocumentRepository extends JpaRepository<Document, Long> {
 
-    // Full-text search using PostgreSQL
-    @Query(value = """
-        SELECT d.*, ts_rank(d.search_vector, plainto_tsquery(:query)) as rank
-        FROM documents d
-        WHERE d.search_vector @@ plainto_tsquery(:query)
-        ORDER BY rank DESC
-        LIMIT :limit
-        """, nativeQuery = true)
-    List<Document> findByFullTextSearch(@Param("query") String query, @Param("limit") int limit);
-
-    // Category-based search
-    @Query("SELECT d FROM Document d WHERE d.category = :category")
-    List<Document> findByCategory(@Param("category") String category);
-
-    // Combined text and category search
-    @Query(value = """
-        SELECT d.*, ts_rank(d.search_vector, plainto_tsquery(:query)) as rank
-        FROM documents d
-        WHERE d.search_vector @@ plainto_tsquery(:query)
-        AND (:category IS NULL OR d.category = :category)
-        ORDER BY rank DESC
-        LIMIT :limit
-        """, nativeQuery = true)
-    List<Document> findByFullTextSearchAndCategory(
-        @Param("query") String query,
-        @Param("category") String category,
-        @Param("limit") int limit
-    );
-
-    @Modifying
-    @Query(value = "UPDATE documents SET embedding = ?1::vector WHERE id = ?2", nativeQuery = true)
-    void updateEmbedding(String embedding, Long id);
-
 }
