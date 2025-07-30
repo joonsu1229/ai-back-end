@@ -39,14 +39,14 @@ public class SearchController {
         return ResponseEntity.ok(results);
     }
 
-    @GetMapping("/sementic")
-    public ResponseEntity<List<SearchResult>> sementicSearch(
+    @GetMapping("/semantic")
+    public ResponseEntity<List<SearchResult>> semanticSearch(
             @RequestParam String query,
             @RequestParam(required = false) String category,
             @RequestParam(defaultValue = "10") int limit) {
 
         // 하이브리드 검색 - 의미적 유사도까지 고려한 고품질 결과
-        List<SearchResult> results = hybridSearchService.sementicSearch(query, category, limit);
+        List<SearchResult> results = hybridSearchService.semanticSearch(query, category, limit);
         return ResponseEntity.ok(results);
     }
     
