@@ -20,6 +20,10 @@ public class EmbeddingService {
         return embeddingModel.embed(text).content();
     }
 
+    public float[] embed(String text) {
+        return embeddingModel.embed(text).content().vector();
+    }
+
     public double cosineSimilarity(Embedding embedding1, Embedding embedding2) {
         float[] vector1 = embedding1.vector();
         float[] vector2 = embedding2.vector();

@@ -20,17 +20,35 @@ public class HybridSearchService {
     
     @Autowired
     private RerankerService rerankerService;
-    
+
+    private final VectorSearchService vectorSearchService;
+
+    public HybridSearchService(VectorSearchService vectorSearchService) {
+        this.vectorSearchService = vectorSearchService;
+    }
+
     public List<SearchResult> hybridSearch(String query, String category, int limit) {
-        // 1. Full-text search
-        List<SearchResult> keywordResults = performKeywordSearch(query, category, limit * 2);
-        
-        // 2. Rerank with semantic similarity
-        List<SearchResult> rerankedResults = rerankerService.rerankWithCategoryBoost(
-            keywordResults, query, category, limit
-        );
-        
-        return rerankedResults;
+        // 1. 키워드 기반 검색
+        String keywordQuery = queryBuilderService.buildFullTextQuery(query);
+
+        List<Document> keywordDocs = (category != null && !category.isEmpty())
+                ? documentRepository.findByFullTextSearchAndCategory(keywordQuery, category, limit * 2)
+                : documentRepository.findByFullTextSearch(keywordQuery, limit * 2);
+
+        List<SearchResult> keywordResults = keywordDocs.stream()
+                .map(doc -> new SearchResult(doc, 1.0, "keyword"))
+                .collect(Collectors.toList());
+
+        // 2. 임베딩 기반 검색
+        List<SearchResult> vectorResults = vectorSearchService.searchByEmbedding(query, category, limit * 2);
+
+        // 3. 결과 병합
+        List<SearchResult> combined = new ArrayList<>();
+        combined.addAll(keywordResults);
+        combined.addAll(vectorResults);
+
+        // 4. 재정렬 (유사도 기준 reranking)
+        return rerankerService.rerankWithCategoryBoost(combined, query, category, limit);
     }
     
     public List<SearchResult> performKeywordSearch(String query, String category, int limit) {
