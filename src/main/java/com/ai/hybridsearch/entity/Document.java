@@ -1,10 +1,16 @@
 package com.ai.hybridsearch.entity;
 
+import com.ai.hybridsearch.util.PGvectorConverter;
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+
 import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "documents")
+@Getter
+@Setter
 public class Document {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -26,8 +32,13 @@ public class Document {
     private LocalDateTime updatedAt;
 
     // Full-text search를 위한 tsvector 컬럼
-    @Column(name = "search_vector", columnDefinition = "tsvector")
+    @Column(name = "search_vector", insertable = false, updatable = false, columnDefinition = "tsvector")
     private String searchVector;
+
+    // vector 검색을 위한 vector컬럼
+    @Convert(converter = PGvectorConverter.class)
+    @Column(name = "embedding", columnDefinition = "vector")
+    private float[] embedding;
 
     // 생성자
     public Document() {}
@@ -40,25 +51,4 @@ public class Document {
         this.updatedAt = LocalDateTime.now();
     }
 
-    // Getters and Setters
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-
-    public String getTitle() { return title; }
-    public void setTitle(String title) { this.title = title; }
-
-    public String getContent() { return content; }
-    public void setContent(String content) { this.content = content; }
-
-    public String getCategory() { return category; }
-    public void setCategory(String category) { this.category = category; }
-
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
-
-    public LocalDateTime getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
-
-    public String getSearchVector() { return searchVector; }
-    public void setSearchVector(String searchVector) { this.searchVector = searchVector; }
 }

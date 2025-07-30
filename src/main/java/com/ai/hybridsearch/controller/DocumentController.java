@@ -2,6 +2,7 @@ package com.ai.hybridsearch.controller;
 
 import com.ai.hybridsearch.entity.Document;
 import com.ai.hybridsearch.repository.DocumentRepository;
+import com.ai.hybridsearch.service.EmbeddingService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,6 +18,9 @@ public class DocumentController {
     
     @Autowired
     private DocumentRepository documentRepository;
+
+    @Autowired
+    private EmbeddingService embeddingService;
     
     @GetMapping
     public ResponseEntity<List<Document>> getAllDocuments() {
@@ -35,6 +39,7 @@ public class DocumentController {
     public ResponseEntity<Document> createDocument(@RequestBody Document document) {
         document.setCreatedAt(LocalDateTime.now());
         document.setUpdatedAt(LocalDateTime.now());
+        document.setEmbedding(embeddingService.embed(document.getContent()));
         Document savedDocument = documentRepository.save(document);
         return ResponseEntity.ok(savedDocument);
     }
@@ -48,6 +53,7 @@ public class DocumentController {
             doc.setContent(document.getContent());
             doc.setCategory(document.getCategory());
             doc.setUpdatedAt(LocalDateTime.now());
+            doc.setEmbedding(embeddingService.embed(document.getContent()));
             Document savedDocument = documentRepository.save(doc);
             return ResponseEntity.ok(savedDocument);
         }
