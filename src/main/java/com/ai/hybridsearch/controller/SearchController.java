@@ -17,23 +17,25 @@ public class SearchController {
     @Autowired
     private HybridSearchService hybridSearchService;
     
-    @GetMapping("/hybrid")
-    public ResponseEntity<List<SearchResult>> hybridSearch(
-            @RequestParam String query,
-            @RequestParam(required = false) String category,
-            @RequestParam(defaultValue = "10") int limit) {
-        
-        List<SearchResult> results = hybridSearchService.hybridSearch(query, category, limit);
-        return ResponseEntity.ok(results);
-    }
-    
     @GetMapping("/keyword")
     public ResponseEntity<List<SearchResult>> keywordSearch(
             @RequestParam String query,
             @RequestParam(required = false) String category,
             @RequestParam(defaultValue = "10") int limit) {
-        
+
+        // 순수 키워드 검색 - 빠르고 정확한 매칭 위주
         List<SearchResult> results = hybridSearchService.performKeywordSearch(query, category, limit);
+        return ResponseEntity.ok(results);
+    }
+
+    @GetMapping("/hybrid")
+    public ResponseEntity<List<SearchResult>> hybridSearch(
+            @RequestParam String query,
+            @RequestParam(required = false) String category,
+            @RequestParam(defaultValue = "10") int limit) {
+
+        // 하이브리드 검색 - 의미적 유사도까지 고려한 고품질 결과
+        List<SearchResult> results = hybridSearchService.hybridSearch(query, category, limit);
         return ResponseEntity.ok(results);
     }
     
