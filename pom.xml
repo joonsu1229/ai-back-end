@@ -53,6 +53,12 @@
             <artifactId>postgresql</artifactId>
         </dependency>
 
+		<dependency>
+		  <groupId>p6spy</groupId>
+		  <artifactId>p6spy</artifactId>
+		  <version>3.9.1</version>
+		</dependency>
+
         <!-- LangChain4J -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
@@ -76,6 +82,14 @@
             <artifactId>langchain4j-pgvector</artifactId>
             <version>${langchain4j.version}</version>
         </dependency>
+
+		<dependency>
+			<groupId>org.projectlombok</groupId>
+			<artifactId>lombok</artifactId>
+			<scope>provided</scope>
+		</dependency>
+
+
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
