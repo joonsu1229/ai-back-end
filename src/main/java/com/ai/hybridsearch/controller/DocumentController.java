@@ -2,14 +2,18 @@ package com.ai.hybridsearch.controller;
 
 import com.ai.hybridsearch.entity.Document;
 import com.ai.hybridsearch.repository.DocumentRepository;
+import com.ai.hybridsearch.service.DocumentService;
 import com.ai.hybridsearch.service.EmbeddingService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 @RestController
 @RequestMapping("/api/documents")
@@ -21,6 +25,9 @@ public class DocumentController {
 
     @Autowired
     private EmbeddingService embeddingService;
+
+    @Autowired
+    private DocumentService documentService;
     
     @GetMapping
     public ResponseEntity<List<Document>> getAllDocuments() {
@@ -37,29 +44,14 @@ public class DocumentController {
     
     @PostMapping
     public ResponseEntity<Document> createDocument(@RequestBody Document document) {
-        document.setCreatedAt(LocalDateTime.now());
-        document.setUpdatedAt(LocalDateTime.now());
-        document.setEmbedding(embeddingService.embed(document.getContent()));
-        Document savedDocument = documentRepository.save(document);
-        return ResponseEntity.ok(savedDocument);
+        return documentService.createDocument(document);
     }
     
     @PutMapping("/{id}")
     public ResponseEntity<Document> updateDocument(@PathVariable Long id, @RequestBody Document document) {
-        Optional<Document> existingDoc = documentRepository.findById(id);
-        if (existingDoc.isPresent()) {
-            Document doc = existingDoc.get();
-            doc.setTitle(document.getTitle());
-            doc.setContent(document.getContent());
-            doc.setCategory(document.getCategory());
-            doc.setUpdatedAt(LocalDateTime.now());
-            doc.setEmbedding(embeddingService.embed(document.getContent()));
-            Document savedDocument = documentRepository.save(doc);
-            return ResponseEntity.ok(savedDocument);
-        }
-        return ResponseEntity.notFound().build();
+        return documentService.updateDocument(id, document);
     }
-    
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteDocument(@PathVariable Long id) {
         if (documentRepository.existsById(id)) {
