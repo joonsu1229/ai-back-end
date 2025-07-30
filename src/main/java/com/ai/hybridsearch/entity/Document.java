@@ -1,6 +1,5 @@
 package com.ai.hybridsearch.entity;
 
-import com.ai.hybridsearch.util.PGvectorConverter;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -36,8 +35,7 @@ public class Document {
     private String searchVector;
 
     // vector 검색을 위한 vector컬럼
-    @Convert(converter = PGvectorConverter.class)
-    @Column(name = "embedding", columnDefinition = "vector")
+    @Transient
     private float[] embedding;
 
     // 생성자
