@@ -21,7 +21,7 @@ public class HybridSearchService {
     private RerankerService rerankerService;
 
     @Autowired
-    private EmbeddingService embeddingService; // LangChain4j용
+    private EmbeddingService embeddingService;
 
     private final VectorSearchService vectorSearchService;
 
@@ -30,45 +30,62 @@ public class HybridSearchService {
     }
 
     public List<SearchResult> hybridSearch(String query, String category, int limit) {
-        // 1. 키워드 기반 검색
+        List<SearchResult> allResults = new ArrayList<>();
+
+        // 1. 어휘적 검색 (Lexical Search)
         String lexicalQuery = queryBuilderService.buildFullTextQuery(query);
+        List<SearchResult> lexicalResults = lexicalSearch(lexicalQuery, category, limit);
+        lexicalResults.forEach(result -> {
+            result.setScore(result.getScore() * 0.4f); // 어휘적 검색 가중치
+            result.setSearchType("lexical");
+        });
 
-        List<Document> lexicalDocs = (category != null && !category.isEmpty())
-                ? documentService.findByFullTextSearchAndCategory(lexicalQuery, category, limit * 2)
-                : documentService.findByFullTextSearch(lexicalQuery, limit * 2);
+        // 2. 의미적 검색 (Semantic Search)
+        List<SearchResult> semanticResults = vectorSearchService.semanticSearch(query, category, limit * 2);
+        semanticResults.forEach(result -> {
+            result.setScore(result.getScore() * 0.6f); // 의미적 검색 가중치
+            result.setSearchType("semantic");
+        });
 
-        List<SearchResult> lexicalResults = lexicalDocs.stream()
-                .map(doc -> new SearchResult(doc, 1.0, "lexical"))
-                .collect(Collectors.toList());
+        // 3. 결과 병합 및 중복 제거
+        Map<Long, SearchResult> combinedResults = new HashMap<>();
 
-        float[] embedding = embeddingService.embed(query);
-        List<Document> semanticDocs = (category != null && !category.isEmpty())
-                ? vectorSearchService.searchByEmbeddingAndCategory(embedding, category, limit)
-                : vectorSearchService.searchByEmbedding(embedding, limit);
-        List<SearchResult> searchResults = semanticDocs.stream()
-        .map(doc -> new SearchResult(doc, 1.0, "semantic"))
-        .collect(Collectors.toList());
+        // 어휘적 결과 추가
+        for (SearchResult result : lexicalResults) {
+            Long docId = result.getDocument().getId();
+            combinedResults.put(docId, result);
+        }
 
-        // 3. 결과 병합
-        List<SearchResult> combined = new ArrayList<>();
-        combined.addAll(lexicalResults);
-        combined.addAll(searchResults);
+        // 의미적 결과와 결합 (하이브리드 점수 계산)
+        for (SearchResult semanticResult : semanticResults) {
+            Long docId = semanticResult.getDocument().getId();
+            SearchResult lexicalResult = combinedResults.get(docId);
+
+            if (lexicalResult != null) {
+                // 두 검색에서 모두 발견된 문서 - 하이브리드 점수 계산
+                float hybridScore = (float) (lexicalResult.getScore() + semanticResult.getScore());
+                SearchResult hybridResult = new SearchResult(
+                    semanticResult.getDocument(),
+                    hybridScore,
+                    "hybrid"
+                );
+                combinedResults.put(docId, hybridResult);
+            } else {
+                // 의미적 검색에서만 발견된 문서
+                combinedResults.put(docId, semanticResult);
+            }
+        }
+
+        allResults.addAll(combinedResults.values());
 
         // 4. 재정렬 (유사도 기준 reranking)
-        return rerankerService.rerankWithCategoryBoost(combined, query, category, limit);
+        return allResults;
     }
-    
-    public List<SearchResult> semanticSearch(String query, String category, int limit) {
-        float[] embedding = embeddingService.embed(query);
-        List<Document> semanticDocs = (category != null && !category.isEmpty())
-                ? vectorSearchService.searchByEmbeddingAndCategory(embedding, category, limit)
-                : vectorSearchService.searchByEmbedding(embedding, limit);
 
-        return semanticDocs.stream()
-            .map(doc -> new SearchResult(doc, 1.0, "semantic"))
-            .collect(Collectors.toList());
-    }    
-    
+    public List<SearchResult> semanticSearch(String query, String category, int limit) {
+        return vectorSearchService.semanticSearch(query, category, limit);
+    }
+
     public List<SearchResult> lexicalSearch(String query, String category, int limit) {
         String processedQuery = queryBuilderService.buildFullTextQuery(query);
 
@@ -78,74 +95,57 @@ public class HybridSearchService {
         } else {
             documents = documentService.findByFullTextSearch(processedQuery, limit);
         }
-        
+
         return documents.stream()
-            .map(doc -> new SearchResult(doc, 1.0, "lexical"))
+            .map(doc -> new SearchResult(doc, doc.getScore(), "lexical"))
             .collect(Collectors.toList());
     }
-    
-    public List<SearchResult> searchWithBoolean(List<String> mustHave, List<String> shouldHave, 
+
+    public List<SearchResult> searchWithBoolean(List<String> mustHave, List<String> shouldHave,
                                                List<String> mustNotHave, String category, int limit) {
         String booleanQuery = queryBuilderService.buildBooleanQuery(mustHave, shouldHave, mustNotHave);
         return lexicalSearch(booleanQuery, category, limit);
     }
-    
+
     public List<SearchResult> searchByCategory(String category, int limit) {
         List<Document> documents = documentService.findByCategory(category);
         return documents.stream()
             .limit(limit)
-            .map(doc -> new SearchResult(doc, 1.0, "category"))
+            .map(doc -> new SearchResult(doc, 1.0f, "category"))
             .collect(Collectors.toList());
     }
-    
-    public List<SearchResult> advancedHybridSearch(String query, String category, 
+
+    public List<SearchResult> advancedHybridSearch(String query, String category,
                                                   boolean useFuzzy, boolean usePhrase, int limit) {
         List<SearchResult> allResults = new ArrayList<>();
-        
-        // 정확한 매칭
-        String exactQuery = queryBuilderService.buildFullTextQuery(query);
-        List<SearchResult> exactResults = lexicalSearch(exactQuery, category, limit);
-        exactResults.forEach(result -> {
-            result.setScore(result.getScore() * 1.0); // 정확한 매칭에 높은 가중치
-            result.setSearchType("exact");
-        });
 
-        // 2. 임베딩 기반 검색
-        List<SearchResult> vectorResults = vectorSearchService.semanticSearch(query, category, limit * 2);
-        vectorResults.forEach(result -> {
-            result.setScore(result.getScore() * 1.0); // 정확한 매칭에 높은 가중치
-            result.setSearchType("exact");
-        });
+        // 1. 기본 하이브리드 검색
+        List<SearchResult> baseResults = hybridSearch(query, category, limit * 2);
+        allResults.addAll(baseResults);
 
-        // 3. 결과 병합
-        List<SearchResult> combined = new ArrayList<>();
-        allResults.addAll(exactResults);
-        allResults.addAll(vectorResults);
-
-        
-        // 구문 검색 (요청시)
+        // 2. 구문 검색 (요청시)
         if (usePhrase) {
             String phraseQuery = queryBuilderService.buildPhraseQuery(query);
             List<SearchResult> phraseResults = lexicalSearch(phraseQuery, category, limit);
             phraseResults.forEach(result -> {
-                result.setScore(result.getScore() * 0.9);
+                result.setScore(result.getScore() * 0.9f);
                 result.setSearchType("phrase");
             });
             allResults.addAll(phraseResults);
         }
-        
-        // 퍼지 검색 (요청시)
+
+        // 3. 퍼지 검색 (요청시)
         if (useFuzzy) {
             String fuzzyQuery = queryBuilderService.buildFuzzyQuery(query);
             List<SearchResult> fuzzyResults = lexicalSearch(fuzzyQuery, category, limit);
             fuzzyResults.forEach(result -> {
-                result.setScore(result.getScore() * 0.7);
+                result.setScore(result.getScore() * 0.7f);
                 result.setSearchType("fuzzy");
             });
             allResults.addAll(fuzzyResults);
         }
-        
-        // 중복 제거 및 재랭킹
+
+        // 4. 중복 제거 및 최고 점수 유지
         Map<Long, SearchResult> uniqueResults = new HashMap<>();
         for (SearchResult result : allResults) {
             Long docId = result.getDocument().getId();

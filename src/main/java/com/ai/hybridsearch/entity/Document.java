@@ -38,8 +38,18 @@ public class Document {
     @Transient
     private float[] embedding;
 
+    @Transient
+    private Document document;
+    @Transient
+    private float score;
+
     // 생성자
     public Document() {}
+
+    public Document(Document document, float score) {
+        this.document = document;
+        this.score = score;
+    }
 
     public Document(String title, String content, String category) {
         this.title = title;
