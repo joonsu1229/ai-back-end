@@ -7,6 +7,7 @@ import jakarta.persistence.Query;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -14,7 +15,7 @@ import java.util.stream.Collectors;
 public class VectorSearchService {
 
     @Autowired
-    private EmbeddingService embeddingService; // LangChain4j용
+    private EmbeddingService embeddingService;
 
     @Autowired
     private EntityManager entityManager;
@@ -27,7 +28,7 @@ public class VectorSearchService {
                 : this.searchByEmbedding(embedding, limit);
 
         return documents.stream()
-                .map(doc -> new SearchResult(doc, 0.8, "embedding"))
+                .map(doc -> new SearchResult(doc, doc.getScore(), "semantic"))  // "semantic" 타입명 유지
                 .collect(Collectors.toList());
     }
 
@@ -36,15 +37,24 @@ public class VectorSearchService {
     public List<Document> searchByEmbedding(float[] embedding, int limit) {
         String vectorStr = floatArrayToVectorString(embedding);
 
-        Query nativeQuery = (Query) entityManager.createNativeQuery("""
+        Query nativeQuery = entityManager.createNativeQuery("""
             SELECT *, 1 - (embedding <=> CAST(?1 AS vector)) AS similarity
             FROM documents
             ORDER BY embedding <=> CAST(?1 AS vector)
             LIMIT ?2
-            """, Document.class);
+            """);
         nativeQuery.setParameter(1, vectorStr);
         nativeQuery.setParameter(2, limit);
-        return nativeQuery.getResultList();
+
+        List<Object[]> results = nativeQuery.getResultList();
+
+        return results.stream().map(row -> {
+            Document doc = mapRowToDocument(row);
+            // similarity 점수를 Document의 score 필드에 설정
+            float score = ((Number) row[row.length - 1]).floatValue();
+            doc.setScore(score);
+            return doc;
+        }).collect(Collectors.toList());
     }
 
     // Vector similarity search with category filter
@@ -58,11 +68,43 @@ public class VectorSearchService {
             WHERE category = ?2
             ORDER BY embedding <=> CAST(?1 AS vector)
             LIMIT ?3
-            """, Document.class);
+            """);
         nativeQuery.setParameter(1, vectorStr);
         nativeQuery.setParameter(2, category);
         nativeQuery.setParameter(3, limit);
-        return nativeQuery.getResultList();
+
+        List<Object[]> results = nativeQuery.getResultList();
+
+        return results.stream().map(row -> {
+            Document doc = mapRowToDocument(row);
+            // similarity 점수를 Document의 score 필드에 설정
+            float score = ((Number) row[row.length - 1]).floatValue();
+            doc.setScore(score);
+            return doc;
+        }).collect(Collectors.toList());
+    }
+
+    // Object[] 배열을 Document로 변환하는 헬퍼 메서드
+    private Document mapRowToDocument(Object[] row) {
+        Document doc = new Document();
+        doc.setId((Long) row[0]);                                    // id
+        doc.setTitle((String) row[5]);                               // title
+        doc.setContent((String) row[2]);                             // content
+        doc.setCategory((String) row[1]);                            // category
+
+        // created_at, updated_at 처리 (null 체크 포함)
+        if (row[4] != null) {
+            doc.setCreatedAt(((Timestamp) row[3]).toLocalDateTime());
+        }
+        if (row[5] != null) {
+            doc.setUpdatedAt(((Timestamp) row[6]).toLocalDateTime());
+        }
+
+        doc.setSearchVector(row[4].toString());                        // search_vector
+        // row[7]은 embedding (보통 매핑하지 않음)
+        // row[8]이 similarity (별도로 처리)
+
+        return doc;
     }
 
     // Text를 embedding으로 변환해서 검색하는 편의 메서드
@@ -93,5 +135,4 @@ public class VectorSearchService {
         sb.append("]");
         return sb.toString();
     }
-
 }
