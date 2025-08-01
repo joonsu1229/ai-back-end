@@ -35,17 +35,9 @@ public class HybridSearchService {
         // 1. 어휘적 검색 (Lexical Search)
         String lexicalQuery = queryBuilderService.buildFullTextQuery(query);
         List<SearchResult> lexicalResults = lexicalSearch(lexicalQuery, category, limit);
-        lexicalResults.forEach(result -> {
-            result.setScore(result.getScore() * 0.4f); // 어휘적 검색 가중치
-            result.setSearchType("lexical");
-        });
 
         // 2. 의미적 검색 (Semantic Search)
         List<SearchResult> semanticResults = vectorSearchService.semanticSearch(query, category, limit * 2);
-        semanticResults.forEach(result -> {
-            result.setScore(result.getScore() * 0.6f); // 의미적 검색 가중치
-            result.setSearchType("semantic");
-        });
 
         // 3. 결과 병합 및 중복 제거
         Map<Long, SearchResult> combinedResults = new HashMap<>();
