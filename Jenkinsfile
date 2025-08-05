@@ -4,7 +4,6 @@ pipeline {
     environment {
         REPO_URL = 'https://github.com/joonsu1229/ai-back-end.git'
         BRANCH = 'master'
-        BUILD_DIR = 'your-springboot-repo'
         DEPLOY_USER = 'ubuntu'
         DEPLOY_HOST = '217.142.144.114'
         DEPLOY_PATH = '/home/ubuntu/app'
