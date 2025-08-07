@@ -54,7 +54,7 @@ pipeline {
                            -DDB_PASSWORD="${DB_PASSWORD}" \
                            -DOPENAI_API_KEY="${OPENAI_API_KEY}" \
                            -Dlangchain.embedding.enabled=false \
-                           -jar /var/lib/jenkins/app/app.jar > /var/lib/jenkins/app/log.txt 2>&1 &
+                           -jar /var/lib/jenkins/app/app.jar > /var/lib/jenkins/app/log.txt 2>&1
 
                 sleep 5
 
