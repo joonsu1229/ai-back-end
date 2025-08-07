@@ -19,7 +19,7 @@ logging:
     org.springframework.boot.context.properties: DEBUG
 
 langchain:
-  model-type: onnx
+  model-type: openai
   openai:
     api-key: ${OPENAI_API_KEY}
   embedding:
