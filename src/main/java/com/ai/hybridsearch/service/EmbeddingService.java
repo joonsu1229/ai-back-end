@@ -1,19 +1,34 @@
 package com.ai.hybridsearch.service;
 
+import com.ai.hybridsearch.config.EmbeddingProperties;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.embedding.onnx.allminilml6v2.AllMiniLmL6V2EmbeddingModel;
+import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
+import jakarta.annotation.PostConstruct;
+import lombok.Data;
+import lombok.RequiredArgsConstructor;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
-
 @Service
+@RequiredArgsConstructor
 public class EmbeddingService {
 
-    private final EmbeddingModel embeddingModel;
+    private final EmbeddingProperties properties;
 
-    public EmbeddingService() {
-        this.embeddingModel = new AllMiniLmL6V2EmbeddingModel();
+    private EmbeddingModel embeddingModel;
+
+    @PostConstruct
+    public void init() {
+        switch (properties.getModelType().toLowerCase()) {
+            case "onnx" -> embeddingModel = new AllMiniLmL6V2EmbeddingModel();
+            case "openai" -> embeddingModel = OpenAiEmbeddingModel.builder()
+                    .apiKey(properties.getOpenai().getApiKey())
+                    .build();
+            default -> throw new IllegalArgumentException("Unsupported embedding model type: " + properties.getModelType());
+        }
     }
 
     public Embedding generateEmbedding(String text) {
