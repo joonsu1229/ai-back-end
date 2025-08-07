@@ -110,7 +110,6 @@ public class DocumentService {
 
     // Document 업데이트
     public ResponseEntity<Document> updateDocument(Long id, Document document) {
-        System.out.println("젠킨스 테스트를 위한 소스");
         Optional<Document> existingDoc = documentRepository.findById(id);
         if (existingDoc.isPresent()) {
             Document doc = existingDoc.get();
