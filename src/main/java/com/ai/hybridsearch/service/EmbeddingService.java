@@ -29,12 +29,6 @@ public class EmbeddingService {
             switch (properties.getModelType().toLowerCase()) {
                 case "onnx" -> {
                     log.info("ONNX 모델 생성 시작...");
-                    log.info("Java version: {}", System.getProperty("java.version"));
-                    log.info("OS: {} {}", System.getProperty("os.name"), System.getProperty("os.arch"));
-                    log.info("Available memory: {} MB", Runtime.getRuntime().maxMemory() / 1024 / 1024);
-                    log.info("Current working directory: {}", System.getProperty("user.dir"));
-                    log.info("Classpath: {}", System.getProperty("java.class.path"));
-
                     try {
                         embeddingModel = new AllMiniLmL6V2EmbeddingModel();
                         log.info("ONNX 모델 생성 완료");
