@@ -19,8 +19,12 @@ logging:
     org.springframework.boot.context.properties: DEBUG
 
 langchain:
-  model-type: openai
+  model-type: ${MODEL_TYPE}
   openai:
     api-key: ${OPENAI_API_KEY}
+    model: text-embedding-3-small
+  gemini:
+    api-key: ${GEMINI_API_KEY}
+    model: embedding-001
   embedding:
     model: all-minilm-l6-v2
