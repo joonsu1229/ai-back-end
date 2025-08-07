@@ -2,6 +2,7 @@ package com.ai.hybridsearch.controller;
 
 import com.ai.hybridsearch.dto.SearchResult;
 import com.ai.hybridsearch.service.HybridSearchService;
+import com.ai.hybridsearch.service.SearchAnalyticsService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -16,6 +17,9 @@ public class SearchController {
     
     @Autowired
     private HybridSearchService hybridSearchService;
+
+    @Autowired
+    private SearchAnalyticsService searchAnalyticsService;
     
     @GetMapping("/lexical")
     public ResponseEntity<List<SearchResult>> lexicalSearch(
@@ -25,6 +29,8 @@ public class SearchController {
 
         // 순수 키워드 검색 - 빠르고 정확한 매칭 위주
         List<SearchResult> results = hybridSearchService.lexicalSearch(query, category, limit);
+        searchAnalyticsService.recordSearch(query, category, results.size(), 10); // 0은 응답 시간 예시
+
         return ResponseEntity.ok(results);
     }
 
@@ -36,6 +42,8 @@ public class SearchController {
 
         // 하이브리드 검색 - 의미적 유사도까지 고려한 고품질 결과
         List<SearchResult> results = hybridSearchService.hybridSearch(query, category, limit);
+        searchAnalyticsService.recordSearch(query, category, results.size(), 10); // 0은 응답 시간 예시
+
         return ResponseEntity.ok(results);
     }
 
@@ -47,6 +55,8 @@ public class SearchController {
 
         // 하이브리드 검색 - 의미적 유사도까지 고려한 고품질 결과
         List<SearchResult> results = hybridSearchService.semanticSearch(query, category, limit);
+        searchAnalyticsService.recordSearch(query, category, results.size(), 10); // 0은 응답 시간 예시
+
         return ResponseEntity.ok(results);
     }
     
@@ -80,6 +90,8 @@ public class SearchController {
         List<SearchResult> results = hybridSearchService.advancedHybridSearch(
             query, category, useFuzzy, usePhrase, limit
         );
+        searchAnalyticsService.recordSearch(query, category, results.size(), 10); // 0은 응답 시간 예시
+
         return ResponseEntity.ok(results);
     }
     
