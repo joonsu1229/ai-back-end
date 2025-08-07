@@ -71,7 +71,9 @@ public class HybridSearchService {
         allResults.addAll(combinedResults.values());
 
         // 4. 재정렬 (유사도 기준 reranking)
-        return allResults;
+        return allResults.stream()
+                .sorted((r1, r2) -> Double.compare(r2.getScore(), r1.getScore()))
+                .collect(Collectors.toList());
     }
 
     public List<SearchResult> semanticSearch(String query, String category, int limit) {
