@@ -83,8 +83,17 @@ public class EmbeddingService {
                 .modelName(geminiconfig.getModel())
                 .build();
 
-        // 차원 축소 래퍼 적용
-        embeddingModel = new DimensionReducedEmbeddingModel(baseModel, config.getTargetDimensions());
+        // 기본 - 학습된 투영 (권장)
+        //embeddingModel = new DimensionReducedEmbeddingModel(baseModel, config.getTargetDimensions());
+
+        // 최고 정확도가 필요한 경우
+        embeddingModel = new DimensionReducedEmbeddingModel(baseModel, config.getTargetDimensions(),
+            DimensionReducedEmbeddingModel.DimensionReductionStrategy.PCA_ADAPTIVE);
+
+        // 빠른 처리가 필요한 경우
+/*        embeddingModel = new DimensionReducedEmbeddingModel(baseModel, config.getTargetDimensions(),
+            DimensionReducedEmbeddingModel.DimensionReductionStrategy.AVERAGE);    */
+
 
         log.info("Gemini 모델 생성 완료 - Model: {}", geminiconfig.getModel());
     }
