@@ -20,6 +20,7 @@ logging:
 
 langchain:
   model-type: ${MODEL_TYPE}
+  target-dimensions: ${TARGET_DIMENSIONS}
   openai:
     api-key: ${OPENAI_API_KEY}
     model: text-embedding-3-small

@@ -14,6 +14,7 @@ pipeline {
         OPENAI_API_KEY = credentials('OPENAI_API_KEY')
         GEMINI_API_KEY = credentials('GEMINI_API_KEY')
         MODEL_TYPE = credentials('MODEL_TYPE')
+        TARGET_DIMENSIONS = credentials('TARGET_DIMENSIONS')
     }
 
     stages {
@@ -72,6 +73,7 @@ pipeline {
                                -DDB_PASSWORD="${DB_PASSWORD}" \
                                -DOPENAI_API_KEY="${OPENAI_API_KEY}" \
                                -DGEMINI_API_KEY="${GEMINI_API_KEY}" \
+                               -DTARGET_DIMENSIONS="${TARGET_DIMENSIONS}" \
                                -Dlangchain.embedding.enabled=false \
                                -jar "$APP_DIR/$JAR_NAME" \
                                > "$LOG_DIR/aiPrjLog.txt" 2>&1 &
