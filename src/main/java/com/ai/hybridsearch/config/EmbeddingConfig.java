@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @Data
 @ConfigurationProperties(prefix = "langchain")
-public class EmbeddingProperties {
+public class EmbeddingConfig {
     private String modelType = "onnx"; // 기본값을 무료 모델로 설정
     private Integer targetDimensions = 384; // 기본 차원 설정
     private OpenAI openai;
