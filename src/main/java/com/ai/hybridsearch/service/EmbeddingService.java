@@ -1,6 +1,7 @@
 package com.ai.hybridsearch.service;
 
-import com.ai.hybridsearch.config.EmbeddingProperties;
+import com.ai.hybridsearch.config.EmbeddingConfig;
+import com.ai.hybridsearch.model.DimensionReducedEmbeddingModel;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.embedding.onnx.allminilml6v2.AllMiniLmL6V2EmbeddingModel;
@@ -16,20 +17,20 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class EmbeddingService {
 
-    private final EmbeddingProperties properties;
+    private final EmbeddingConfig config;
     private EmbeddingModel embeddingModel;
 
     @PostConstruct
     public void init() {
         try {
             log.info("=== EmbeddingService 초기화 시작 ===");
-            log.info("Model Type: {}", properties.getModelType());
+            log.info("Model Type: {}, Dimensions reduced to: {}", config.getModelType(), config.getTargetDimensions());
 
-            switch (properties.getModelType().toLowerCase()) {
+            switch (config.getModelType().toLowerCase()) {
                 case "onnx" -> initOnnxModel();
                 case "openai" -> initOpenAiModel();
                 case "gemini" -> initGeminiModel();
-                default -> throw new IllegalArgumentException("Unsupported embedding model type: " + properties.getModelType());
+                default -> throw new IllegalArgumentException("Unsupported embedding model type: " + config.getModelType());
             }
 
             log.info("=== EmbeddingService 초기화 완료 ===");
@@ -52,39 +53,40 @@ public class EmbeddingService {
 
     private void initOpenAiModel() {
         log.info("OpenAI 모델 생성 시작...");
-        validateApiKey(properties.getOpenai() != null ? properties.getOpenai().getApiKey() : null, "OpenAI");
+        validateApiKey(config.getOpenai() != null ? config.getOpenai().getApiKey() : null, "OpenAI");
 
         var builder = OpenAiEmbeddingModel.builder()
-                .apiKey(properties.getOpenai().getApiKey());
+                .apiKey(config.getOpenai().getApiKey())
+                .dimensions(config.getTargetDimensions());
 
         // 모델명이 설정되어 있으면 사용
-        if (properties.getOpenai().getModel() != null) {
-            builder.modelName(properties.getOpenai().getModel());
+        if (config.getOpenai().getModel() != null) {
+            builder.modelName(config.getOpenai().getModel());
         }
 
         embeddingModel = builder.build();
         log.info("OpenAI 모델 생성 완료 - Model: {}",
-                properties.getOpenai().getModel() != null ? properties.getOpenai().getModel() : "default");
+                config.getOpenai().getModel() != null ? config.getOpenai().getModel() : "default");
     }
 
     private void initGeminiModel() {
         log.info("Gemini 모델 생성 시작...");
 
-        // properties.getGemini()가 null인지 먼저 확인
-        var geminiProperties = properties.getGemini();
-        if (geminiProperties == null || geminiProperties.getApiKey() == null) {
+        var geminiconfig = config.getGemini();
+        if (geminiconfig == null || geminiconfig.getApiKey() == null) {
             throw new IllegalArgumentException("Gemini API 키가 설정되지 않았습니다.");
         }
 
-        var builder = GoogleAiEmbeddingModel.builder()
-                .apiKey(geminiProperties.getApiKey());
+        // 차원 축소를 위한 래퍼 모델 사용
+        var baseModel = GoogleAiEmbeddingModel.builder()
+                .apiKey(geminiconfig.getApiKey())
+                .modelName(geminiconfig.getModel())
+                .build();
 
-        // 모델명을 변수에 저장하여 가독성 향상
-        String modelName = geminiProperties.getModel();
-        builder.modelName(modelName);
+        // 차원 축소 래퍼 적용
+        embeddingModel = new DimensionReducedEmbeddingModel(baseModel, config.getTargetDimensions());
 
-        embeddingModel = builder.build();
-        log.info("Gemini 모델 생성 완료 - Model: {}", modelName);
+        log.info("Gemini 모델 생성 완료 - Model: {}", geminiconfig.getModel());
     }
 
     private void validateApiKey(String apiKey, String provider) {
@@ -180,7 +182,7 @@ public class EmbeddingService {
      * @return 모델 타입 문자열
      */
     public String getCurrentModelType() {
-        return properties.getModelType();
+        return config.getModelType();
     }
 
     /**
