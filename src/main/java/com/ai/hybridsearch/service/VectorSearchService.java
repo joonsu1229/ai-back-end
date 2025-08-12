@@ -67,6 +67,7 @@ public class VectorSearchService {
     private List<Document> mapToDocumentsWithScore(List<Object[]> results) {
         return results.stream()
                 .map(this::mapRowToDocumentWithScore)
+                .sorted((r1, r2) -> Double.compare(r2.getScore(), r1.getScore()))
                 .collect(Collectors.toList());
     }
 
