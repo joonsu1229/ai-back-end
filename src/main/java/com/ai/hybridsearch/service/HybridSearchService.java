@@ -70,10 +70,19 @@ public class HybridSearchService {
 
         allResults.addAll(combinedResults.values());
 
+        // 4. 중복 제거 및 최고 점수 유지
+        Map<Long, SearchResult> uniqueResults = new HashMap<>();
+        for (SearchResult result : allResults) {
+            Long docId = result.getDocument().getId();
+            if (!uniqueResults.containsKey(docId) ||
+                uniqueResults.get(docId).getScore() < result.getScore()) {
+                uniqueResults.put(docId, result);
+            }
+        }
+
         // 4. 재정렬 (유사도 기준 reranking)
-        return allResults.stream()
-                .sorted((r1, r2) -> Double.compare(r2.getScore(), r1.getScore()))
-                .collect(Collectors.toList());
+        List<SearchResult> finalResults = new ArrayList<>(uniqueResults.values());
+        return rerankerService.rerankWithCategoryBoost(finalResults, query, category, limit);
     }
 
     public List<SearchResult> semanticSearch(String query, String category, int limit) {
@@ -85,9 +94,9 @@ public class HybridSearchService {
 
         List<Document> documents;
         if (category != null && !category.isEmpty()) {
-            documents = documentService.findByFullTextSearchAndCategory(processedQuery, category, limit);
+            documents = vectorSearchService.findByFullTextSearchAndCategory(processedQuery, category, limit);
         } else {
-            documents = documentService.findByFullTextSearch(processedQuery, limit);
+            documents = vectorSearchService.findByFullTextSearch(processedQuery, limit);
         }
 
         return documents.stream()

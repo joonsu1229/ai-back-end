@@ -27,38 +27,6 @@ public class DocumentService {
     @Autowired
     private EmbeddingService embeddingService;
 
-    // Full text search
-    @SuppressWarnings("unchecked")
-    public List<Document> findByFullTextSearch(String query, int limit) {
-        Query nativeQuery = entityManager.createNativeQuery("""
-            SELECT d.*, ts_rank(d.search_vector, plainto_tsquery(?1)) as rank
-            FROM documents d
-            WHERE d.search_vector @@ plainto_tsquery(?1)
-            ORDER BY rank DESC
-            LIMIT ?2
-            """, Document.class);
-        nativeQuery.setParameter(1, query);
-        nativeQuery.setParameter(2, limit);
-        return nativeQuery.getResultList();
-    }
-
-    // Combined text and category search
-    @SuppressWarnings("unchecked")
-    public List<Document> findByFullTextSearchAndCategory(String query, String category, int limit) {
-        Query nativeQuery = entityManager.createNativeQuery("""
-            SELECT d.*, ts_rank(d.search_vector, plainto_tsquery(?1)) as rank
-            FROM documents d
-            WHERE d.search_vector @@ plainto_tsquery(?1)
-            AND (?2 IS NULL OR d.category = ?2)
-            ORDER BY rank DESC
-            LIMIT ?3
-            """, Document.class);
-        nativeQuery.setParameter(1, query);
-        nativeQuery.setParameter(2, category);
-        nativeQuery.setParameter(3, limit);
-        return nativeQuery.getResultList();
-    }
-
     // Embedding 업데이트
     public void updateEmbedding(String embedding, Long id) {
         Query query = entityManager.createNativeQuery(
