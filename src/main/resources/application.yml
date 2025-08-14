@@ -15,9 +15,85 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
     show-sql: true
+  # Cache Configuration
+  cache:
+    type: simple
+    cache-names:
+      - jobStats
+      - companyList
+      - categoryList
+    caffeine:
+      spec: maximumSize=1000,expireAfterWrite=1h
 
 langchain:
   model-type: onnx
   embedding:
     enabled: true  # 이 줄 추가
     model: all-minilm-l6-v2
+
+
+# Management & Monitoring
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+# Custom Application Properties
+app:
+  name: Job Search Crawler
+  version: 1.0.0
+  description: AI-powered job posting crawler and search system
+
+  # 데이터 정리 설정
+  cleanup:
+    old-jobs-days: 30      # 30일 이전 채용공고 삭제
+    inactive-jobs-days: 7   # 7일간 업데이트 없으면 비활성화
+    batch-size: 1000       # 배치 처리 사이즈
+
+  # 검색 설정
+  search:
+    default-limit: 20
+    max-limit: 100
+    similarity-threshold: 0.7
+
+# Crawling Configuration
+crawling:
+  enabled: true
+  scheduled: true
+  delay:
+    between-requests: 1000  # ms
+    between-sites: 5000     # ms
+  timeout:
+    connection: 10000       # ms
+    read: 15000            # ms
+  retry:
+    max-attempts: 3
+    delay: 2000            # ms
+  user-agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+  # 크롤링 대상 사이트 설정
+  sites:
+    saramin:
+      enabled: true
+      base-url: "https://www.saramin.co.kr"
+      search-urls:
+        - "/zf_user/search/recruit?searchType=search&searchword=개발자"
+        - "/zf_user/search/recruit?searchType=search&searchword=프론트엔드"
+        - "/zf_user/search/recruit?searchType=search&searchword=백엔드"
+        - "/zf_user/search/recruit?searchType=search&searchword=풀스택"
+
+    jobkorea:
+      enabled: true
+      base-url: "https://www.jobkorea.co.kr"
+      search-urls:
+        - "/Search/?stext=개발자"
+        - "/Search/?stext=프론트엔드"
+        - "/Search/?stext=백엔드"
