@@ -70,6 +70,7 @@ public class JobPosting {
 
     // vector 검색을 위한 vector컬럼
     @Column(name = "embedding", columnDefinition = "vector(768)")
+    @Transient
     private float[] embedding;
 
     @Transient

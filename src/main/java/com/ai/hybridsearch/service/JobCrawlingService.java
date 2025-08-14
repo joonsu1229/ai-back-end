@@ -805,41 +805,36 @@ public class JobCrawlingService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void saveIndividualJob(JobPosting job) {
+      if (!isValidJob(job)) {
+        log.warn("필수 필드 누락된 채용공고 스킵: {} - {}", job.getCompany(), job.getTitle());
+        return;
+      }
+
+      if (!jobPostingRepository.existsBySourceUrlAndIsActiveTrue(job.getSourceUrl())) {
+        JobPosting newJob = createCleanJobPosting(job);
+
+        // 1) 먼저 저장 + 즉시 flush
+        JobPosting saved = jobPostingRepository.saveAndFlush(newJob);
+
         try {
-            if (!isValidJob(job)) {
-                log.warn("필수 필드 누락된 채용공고 스킵: {} - {}", job.getCompany(), job.getTitle());
-                return;
-            }
+          String content = buildContentForEmbedding(saved);
+          if (!content.trim().isEmpty()) {
+            float[] embeddingArray = embeddingService.embed(content);
+            saved.setEmbedding(embeddingArray); // 애플리케이션 보관용(@Transient라면 DB엔 영향 없음)
+            String embeddingText = floatArrayToVectorString(embeddingArray);
 
-            Boolean existingJobs = jobPostingRepository.existsBySourceUrlAndIsActiveTrue(job.getSourceUrl());
-
-            if (!existingJobs) {
-                JobPosting newJob = createCleanJobPosting(job);
-
-                try {
-                    String content = buildContentForEmbedding(newJob);
-                    if (!content.trim().isEmpty()) {
-                        float[] embeddingArray = embeddingService.embed(content);
-                        newJob.setEmbedding(embeddingArray);
-                    }
-                } catch (Exception embeddingError) {
-                    log.warn("임베딩 생성 실패, null로 설정: {} - {}",
-                            newJob.getCompany(), newJob.getTitle(), embeddingError);
-                    newJob.setEmbedding(null);
-                }
-
-                jobPostingRepository.save(newJob);
-                log.debug("새 채용공고 저장: {} - {}", newJob.getCompany(), newJob.getTitle());
-
-            } else {
-                log.debug("중복 채용공고 스킵: {} - {}", job.getCompany(), job.getTitle());
-            }
-
-        } catch (Exception e) {
-            log.error("개별 채용공고 저장 실패: {} - {}",
-                    job.getCompany() != null ? job.getCompany() : "Unknown",
-                    job.getTitle() != null ? job.getTitle() : "Unknown", e);
+            // 2) 같은 트랜잭션에서 네이티브 UPDATE (flushAutomatically로 안전)
+            jobPostingRepository.updateEmbedding(saved.getId(), embeddingText);
+          }
+        } catch (Exception embeddingError) {
+          log.warn("임베딩 생성 실패, null로 설정: {} - {}", saved.getCompany(), saved.getTitle(), embeddingError);
+          saved.setEmbedding(null);
         }
+
+        log.debug("새 채용공고 저장: {} - {}", saved.getCompany(), saved.getTitle());
+      } else {
+        log.debug("중복 채용공고 스킵: {} - {}", job.getCompany(), job.getTitle());
+      }
     }
 
     private JobPosting createCleanJobPosting(JobPosting source) {
