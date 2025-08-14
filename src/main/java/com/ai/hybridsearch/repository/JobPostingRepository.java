@@ -24,6 +24,11 @@ public interface JobPostingRepository extends JpaRepository<JobPosting, Long> {
     )
     Page<JobPosting> findByIsActiveTrue(Pageable pageable);
 
+    @Modifying(clearAutomatically = true)
+    @Transactional
+    @Query(value = "UPDATE job_postings SET embedding = CAST(:embeddingText AS vector) WHERE id = :id", nativeQuery = true)
+    int updateEmbedding(@Param("id") Long id, @Param("embeddingText") String embeddingText);
+
     List<JobPosting> findByIsActiveTrueOrderByCreatedAtDesc();
 
     // 카테고리별 조회
