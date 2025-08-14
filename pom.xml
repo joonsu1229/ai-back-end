@@ -32,6 +32,8 @@
         <java.version>21</java.version>
         <langchain4j.version>0.36.2</langchain4j.version>
 		<jsoup.version>1.17.1</jsoup.version>
+    	<selenium.version>4.34.0</selenium.version>
+    	<webdrivermanager.version>5.3.3</webdrivermanager.version>
     </properties>
 
     <dependencies>
@@ -121,6 +123,24 @@
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
         </dependency>
+
+		<dependency>
+			<groupId>org.seleniumhq.selenium</groupId>
+			<artifactId>selenium-java</artifactId>
+			<version>${selenium.version}</version>
+		</dependency>
+
+		<dependency>
+			<groupId>org.seleniumhq.selenium</groupId>
+			<artifactId>selenium-devtools-v139</artifactId>
+			<version>4.35.0</version>
+		</dependency>
+
+		<dependency>
+			<groupId>io.github.bonigarcia</groupId>
+			<artifactId>webdrivermanager</artifactId>
+			<version>${webdrivermanager.version}</version>
+		</dependency>
 
     </dependencies>
 

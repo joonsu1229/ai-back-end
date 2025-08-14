@@ -1,5 +1,6 @@
 package com.ai.hybridsearch.service;
 
+import com.ai.hybridsearch.dto.SearchResult;
 import com.ai.hybridsearch.entity.JobPosting;
 import com.ai.hybridsearch.repository.JobPostingRepository;
 import jakarta.persistence.EntityManager;
@@ -31,6 +32,9 @@ public class JobSearchService {
 
     @Autowired
     private EntityManager entityManager;
+
+    @Autowired
+    private RerankerService rerankerService;
 
     /**
      * AI 기반 유사도 검색
@@ -82,7 +86,10 @@ public class JobSearchService {
             }
 
             log.info("하이브리드 검색 완료: 쿼리='{}', 결과={}개", query, jobs.size());
-            return jobs;
+
+            // 4. 재정렬 (유사도 기준 reranking)
+            List<JobPosting> finalResults = new ArrayList<>(jobs);
+            return rerankerService.rerank(finalResults, query, limit);
 
         } catch (Exception e) {
             log.error("하이브리드 검색 실패: {}", query, e);
