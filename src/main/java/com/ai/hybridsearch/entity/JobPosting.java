@@ -1,15 +1,17 @@
 package com.ai.hybridsearch.entity;
 
+import com.pgvector.PGvector;
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
+import org.springframework.boot.autoconfigure.batch.BatchProperties;
 
 import java.time.LocalDateTime;
+import java.util.Vector;
 
 @Entity
 @Table(name = "job_postings")
-@Data
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 public class JobPosting {
@@ -66,8 +68,14 @@ public class JobPosting {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    @Column(name = "embedding")
+    // vector 검색을 위한 vector컬럼
+    @Column(name = "embedding", columnDefinition = "vector(768)")
     private float[] embedding;
+
+    @Transient
+    private JobPosting jobPosting;
+    @Transient
+    private double score;
 
     @PrePersist
     protected void onCreate() {

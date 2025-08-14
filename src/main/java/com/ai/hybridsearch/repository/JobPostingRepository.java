@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 @Repository
 public interface JobPostingRepository extends JpaRepository<JobPosting, Long> {
@@ -117,17 +118,6 @@ public interface JobPostingRepository extends JpaRepository<JobPosting, Long> {
                    "LIMIT ?3", nativeQuery = true)
     List<Object[]> hybridSearch(String embeddingVector, String keyword, int limit);
 
-    // 정리 작업용
-    @Modifying
-    @Transactional
-    @Query("DELETE FROM JobPosting j WHERE j.createdAt < :cutoffDate")
-    int deleteByCreatedAtBefore(@Param("cutoffDate") LocalDateTime cutoffDate);
-
-    @Modifying
-    @Transactional
-    @Query("UPDATE JobPosting j SET j.isActive = false WHERE j.deadline IS NOT NULL AND j.deadline < CURRENT_TIMESTAMP")
-    int deactivateExpiredJobs(LocalDateTime now);
-
     // 검색 필터 조합
     @Query("SELECT j FROM JobPosting j WHERE j.isActive = true " +
            "AND (:jobCategory IS NULL OR j.jobCategory = :jobCategory) " +
@@ -164,4 +154,23 @@ public interface JobPostingRepository extends JpaRepository<JobPosting, Long> {
     // 특정 기간 내 채용공고
     @Query("SELECT j FROM JobPosting j WHERE j.createdAt BETWEEN :startDate AND :endDate AND j.isActive = true")
     List<JobPosting> findJobsBetweenDates(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
+
+    @Modifying
+    @Query("UPDATE JobPosting j SET j.isActive = false WHERE j.deadline < :currentDate AND j.isActive = true")
+    int deactivateExpiredJobs(@Param("currentDate") LocalDateTime currentDate);
+
+    @Query("DELETE FROM JobPosting j WHERE j.createdAt < :cutoffDate")
+    @Modifying
+    int deleteByCreatedAtBefore(@Param("cutoffDate") LocalDateTime cutoffDate);
+
+    // 배치 처리용 메서드
+    @Modifying
+    @Query(value = "INSERT INTO job_posting (title, company, source_site, source_url, job_category, location, " +
+                  "description, requirements, benefits, salary, employment_type, experience_level, is_active, " +
+                  "created_at, updated_at) VALUES " +
+                  "(:#{#job.title}, :#{#job.company}, :#{#job.sourceSite}, :#{#job.sourceUrl}, :#{#job.jobCategory}, " +
+                  ":#{#job.location}, :#{#job.description}, :#{#job.requirements}, :#{#job.benefits}, " +
+                  ":#{#job.salary}, :#{#job.employmentType}, :#{#job.experienceLevel}, :#{#job.isActive}, " +
+                  ":#{#job.createdAt}, :#{#job.updatedAt})", nativeQuery = true)
+    void insertJobPosting(@Param("job") JobPosting job);
 }
