@@ -1,3 +1,4 @@
+// JobCrawlingService.java - 기존 로직 기반 사이트별 크롤링 기능 추가
 package com.ai.hybridsearch.service;
 
 import com.ai.hybridsearch.entity.JobPosting;
@@ -40,15 +41,24 @@ public class JobCrawlingService {
     @Autowired
     private EmbeddingService embeddingService;
 
+    // 크롤링 가능한 사이트 목록
+    private static final Map<String, String> SUPPORTED_SITES = Map.of(
+            "saramin", "사람인",
+            "jobkorea", "잡코리아",
+            "wanted", "원티드"
+//            "programmers", "프로그래머스",
+//            "jumpit", "점핏"
+    );
+
     // 대기/지연 설정 최적화
     private static final int IMPLICIT_WAIT_SECONDS = 3;
     private static final int EXPLICIT_WAIT_SECONDS = 10;
     private static final int PAGE_LOAD_TIMEOUT_SECONDS = 15;
-    private static final long MIN_DELAY = 120;   // 기존 2000 -> 120ms
-    private static final long MAX_DELAY = 250;   // 기존 4000 -> 250ms
+    private static final long MIN_DELAY = 120;
+    private static final long MAX_DELAY = 250;
     private static final int MAX_RETRIES = 1;
 
-    // 상세 페이지 병렬 처리 개수 (CPU/IO 혼합 워크로드 고려)
+    // 상세 페이지 병렬 처리 개수
     private static final int DETAIL_PARALLELISM =
             Math.max(3, Math.min(8, Runtime.getRuntime().availableProcessors()));
 
@@ -62,7 +72,6 @@ public class JobCrawlingService {
     @PostConstruct
     public void init() {
         try {
-            WebDriverManager.chromedriver().setup();
             detailExecutor = Executors.newFixedThreadPool(DETAIL_PARALLELISM);
             log.info("JobCrawlingService 초기화 완료 - ChromeDriver 설정 및 상세 병렬 스레드 {}개 준비", DETAIL_PARALLELISM);
         } catch (Exception e) {
@@ -86,6 +95,456 @@ public class JobCrawlingService {
         }
         log.info("JobCrawlingService 정리 완료");
     }
+
+    // ===== 새로 추가된 사이트별 크롤링 메서드들 =====
+
+    /**
+     * 전체 사이트 크롤링 (기존 메소드)
+     */
+    public CompletableFuture<String> startManualCrawling() {
+        log.info("전체 사이트 크롤링 시작");
+        try {
+            return crawlAllSites().thenApply(jobs ->
+                    String.format("전체 크롤링 완료: %d개 채용공고 수집", jobs.size())
+            );
+        } catch (Exception e) {
+            log.error("전체 크롤링 시작 실패", e);
+            return CompletableFuture.completedFuture("크롤링 실패: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 특정 사이트들만 크롤링
+     */
+    @Async
+    public CompletableFuture<String> startCrawlingBySites(List<String> siteIds) {
+        try {
+            log.info("사이트별 크롤링 시작: {}", siteIds);
+
+            List<JobPosting> allJobs = new ArrayList<>();
+            Map<String, Integer> siteResults = new HashMap<>();
+
+            for (String siteId : siteIds) {
+                if (!SUPPORTED_SITES.containsKey(siteId)) {
+                    log.warn("지원하지 않는 사이트: {}", siteId);
+                    continue;
+                }
+
+                String siteName = SUPPORTED_SITES.get(siteId);
+                log.info("{}({}) 크롤링 시작", siteName, siteId);
+
+                try {
+                    List<JobPosting> siteJobs = crawlSpecificSite(siteId);
+                    allJobs.addAll(siteJobs);
+                    siteResults.put(siteName, siteJobs.size());
+
+                    log.info("{}({}) 크롤링 완료: {}개 수집", siteName, siteId, siteJobs.size());
+
+                    // 사이트 간 간격 (과부하 방지)
+                    Thread.sleep(2000);
+
+                } catch (Exception e) {
+                    log.error("{}({}) 크롤링 실패", siteName, siteId, e);
+                    siteResults.put(siteName, 0);
+                }
+            }
+
+            String resultMessage = String.format(
+                    "사이트별 크롤링 완료 - 총 %d개 수집. 사이트별 결과: %s",
+                    allJobs.size(),
+                    siteResults
+            );
+
+            log.info(resultMessage);
+            return CompletableFuture.completedFuture(resultMessage);
+
+        } catch (Exception e) {
+            log.error("사이트별 크롤링 프로세스 실패", e);
+            return CompletableFuture.completedFuture("크롤링 실패: " + e.getMessage());
+        } finally {
+            closeDriver();
+        }
+    }
+
+    /**
+     * 개별 사이트 크롤링 실행
+     */
+    private List<JobPosting> crawlSpecificSite(String siteId) {
+        switch (siteId) {
+            case "saramin":
+                return crawlSaramin();
+            case "jobkorea":
+                return crawlJobkorea();
+            case "wanted":
+                return crawlWanted();
+            case "programmers":
+                return crawlProgrammers();
+            case "jumpit":
+                return crawlJumpit();
+            default:
+                log.warn("알 수 없는 사이트 ID: {}", siteId);
+                return new ArrayList<>();
+        }
+    }
+
+    /**
+     * 원티드 크롤링 (새로 추가)
+     */
+    private List<JobPosting> crawlWanted() {
+        List<JobPosting> jobs = new ArrayList<>();
+        WebDriver driver = getDriver();
+        WebDriverWait wait = getWait();
+
+        try {
+            for (int page = 1; page <= 2; page++) {
+                String url = String.format(
+                        "https://www.wanted.co.kr/search?query=개발자&tab=position&page=%d",
+                        page
+                );
+
+                if (!loadPage(driver, url, "원티드")) {
+                    continue;
+                }
+
+                try {
+                    wait.until(ExpectedConditions.presenceOfElementLocated(
+                            By.cssSelector(".JobCard, .job-card, .Card, .position-card")));
+                } catch (Exception e) {
+                    log.warn("원티드 페이지 {} 로딩 대기 실패", page);
+                    continue;
+                }
+
+                List<WebElement> jobElements = findJobElements(driver, "원티드");
+                log.info("원티드 페이지 {}에서 {}개 채용공고 발견", page, jobElements.size());
+
+                for (WebElement jobElement : jobElements) {
+                    try {
+                        JobPosting job = parseWantedJob(jobElement);
+                        if (job != null) {
+                            jobs.add(job);
+                        }
+                    } catch (Exception e) {
+                        log.warn("원티드 개별 채용공고 처리 실패", e);
+                    }
+                }
+            }
+
+            if (!jobs.isEmpty()) {
+                fetchDetailsInParallel("원티드", jobs);
+            }
+
+        } catch (Exception e) {
+            log.error("원티드 크롤링 실패", e);
+        }
+
+        return jobs;
+    }
+
+    /**
+     * 프로그래머스 크롤링 (새로 추가)
+     */
+    private List<JobPosting> crawlProgrammers() {
+        List<JobPosting> jobs = new ArrayList<>();
+        WebDriver driver = getDriver();
+        WebDriverWait wait = getWait();
+
+        try {
+            for (int page = 1; page <= 2; page++) {
+                String url = String.format(
+                        "https://career.programmers.co.kr/job?page=%d",
+                        page
+                );
+
+                if (!loadPage(driver, url, "프로그래머스")) {
+                    continue;
+                }
+
+                try {
+                    wait.until(ExpectedConditions.presenceOfElementLocated(
+                            By.cssSelector(".job-item, .list-item, .card")));
+                } catch (Exception e) {
+                    log.warn("프로그래머스 페이지 {} 로딩 대기 실패", page);
+                    continue;
+                }
+
+                List<WebElement> jobElements = findJobElements(driver, "프로그래머스");
+                log.info("프로그래머스 페이지 {}에서 {}개 채용공고 발견", page, jobElements.size());
+
+                for (WebElement jobElement : jobElements) {
+                    try {
+                        JobPosting job = parseProgrammersJob(jobElement);
+                        if (job != null) {
+                            jobs.add(job);
+                        }
+                    } catch (Exception e) {
+                        log.warn("프로그래머스 개별 채용공고 처리 실패", e);
+                    }
+                }
+            }
+
+            if (!jobs.isEmpty()) {
+                fetchDetailsInParallel("프로그래머스", jobs);
+            }
+
+        } catch (Exception e) {
+            log.error("프로그래머스 크롤링 실패", e);
+        }
+
+        return jobs;
+    }
+
+    /**
+     * 점핏 크롤링 (새로 추가)
+     */
+    private List<JobPosting> crawlJumpit() {
+        List<JobPosting> jobs = new ArrayList<>();
+        WebDriver driver = getDriver();
+        WebDriverWait wait = getWait();
+
+        try {
+            for (int page = 1; page <= 2; page++) {
+                String url = String.format(
+                        "https://www.jumpit.co.kr/positions?page=%d",
+                        page
+                );
+
+                if (!loadPage(driver, url, "점핏")) {
+                    continue;
+                }
+
+                try {
+                    wait.until(ExpectedConditions.presenceOfElementLocated(
+                            By.cssSelector(".position-item, .job-card, .card")));
+                } catch (Exception e) {
+                    log.warn("점핏 페이지 {} 로딩 대기 실패", page);
+                    continue;
+                }
+
+                List<WebElement> jobElements = findJobElements(driver, "점핏");
+                log.info("점핏 페이지 {}에서 {}개 채용공고 발견", page, jobElements.size());
+
+                for (WebElement jobElement : jobElements) {
+                    try {
+                        JobPosting job = parseJumpitJob(jobElement);
+                        if (job != null) {
+                            jobs.add(job);
+                        }
+                    } catch (Exception e) {
+                        log.warn("점핏 개별 채용공고 처리 실패", e);
+                    }
+                }
+            }
+
+            if (!jobs.isEmpty()) {
+                fetchDetailsInParallel("점핏", jobs);
+            }
+
+        } catch (Exception e) {
+            log.error("점핏 크롤링 실패", e);
+        }
+
+        return jobs;
+    }
+
+    // ===== 새로운 사이트 파싱 메서드들 =====
+
+    private JobPosting parseWantedJob(WebElement jobElement) {
+        try {
+            JobPosting job = new JobPosting();
+
+            WebElement titleElement = findElementBySelectors(jobElement,
+                    ".JobCard_title", ".job-card-title", ".title", "h3 a", "h4 a");
+
+            if (titleElement != null) {
+                job.setTitle(cleanText(titleElement.getText()));
+                String href = titleElement.getAttribute("href");
+                if (href != null && !href.startsWith("http")) {
+                    href = "https://www.wanted.co.kr" + href;
+                }
+                job.setSourceUrl(href);
+            }
+
+            WebElement companyElement = findElementBySelectors(jobElement,
+                    ".JobCard_companyName", ".company-name", ".company", ".corp-name");
+
+            if (companyElement != null) {
+                job.setCompany(cleanText(companyElement.getText()));
+            }
+
+            setBasicJobInfo(jobElement, job);
+
+            job.setSourceSite("원티드");
+            job.setJobCategory("개발");
+            job.setIsActive(true);
+            job.setCreatedAt(LocalDateTime.now());
+            job.setUpdatedAt(LocalDateTime.now());
+
+            return isValidJob(job) ? job : null;
+
+        } catch (Exception e) {
+            log.warn("원티드 개별 채용공고 파싱 실패", e);
+            return null;
+        }
+    }
+
+    private JobPosting parseProgrammersJob(WebElement jobElement) {
+        try {
+            JobPosting job = new JobPosting();
+
+            WebElement titleElement = findElementBySelectors(jobElement,
+                    ".job-title a", ".title a", "h3 a", "h4 a");
+
+            if (titleElement != null) {
+                job.setTitle(cleanText(titleElement.getText()));
+                String href = titleElement.getAttribute("href");
+                if (href != null && !href.startsWith("http")) {
+                    href = "https://career.programmers.co.kr" + href;
+                }
+                job.setSourceUrl(href);
+            }
+
+            WebElement companyElement = findElementBySelectors(jobElement,
+                    ".company-name", ".company", ".corp-name");
+
+            if (companyElement != null) {
+                job.setCompany(cleanText(companyElement.getText()));
+            }
+
+            setBasicJobInfo(jobElement, job);
+
+            job.setSourceSite("프로그래머스");
+            job.setJobCategory("개발");
+            job.setIsActive(true);
+            job.setCreatedAt(LocalDateTime.now());
+            job.setUpdatedAt(LocalDateTime.now());
+
+            return isValidJob(job) ? job : null;
+
+        } catch (Exception e) {
+            log.warn("프로그래머스 개별 채용공고 파싱 실패", e);
+            return null;
+        }
+    }
+
+    private JobPosting parseJumpitJob(WebElement jobElement) {
+        try {
+            JobPosting job = new JobPosting();
+
+            WebElement titleElement = findElementBySelectors(jobElement,
+                    ".position-title a", ".job-title a", ".title a", "h3 a", "h4 a");
+
+            if (titleElement != null) {
+                job.setTitle(cleanText(titleElement.getText()));
+                String href = titleElement.getAttribute("href");
+                if (href != null && !href.startsWith("http")) {
+                    href = "https://www.jumpit.co.kr" + href;
+                }
+                job.setSourceUrl(href);
+            }
+
+            WebElement companyElement = findElementBySelectors(jobElement,
+                    ".company-name", ".company", ".corp-name");
+
+            if (companyElement != null) {
+                job.setCompany(cleanText(companyElement.getText()));
+            }
+
+            setBasicJobInfo(jobElement, job);
+
+            job.setSourceSite("점핏");
+            job.setJobCategory("개발");
+            job.setIsActive(true);
+            job.setCreatedAt(LocalDateTime.now());
+            job.setUpdatedAt(LocalDateTime.now());
+
+            return isValidJob(job) ? job : null;
+
+        } catch (Exception e) {
+            log.warn("점핏 개별 채용공고 파싱 실패", e);
+            return null;
+        }
+    }
+
+    // ===== 상태 관리 및 정보 제공 메서드들 =====
+
+    /**
+     * 지원 가능한 크롤링 사이트 목록 반환
+     */
+    public Map<String, String> getSupportedSites() {
+        return new HashMap<>(SUPPORTED_SITES);
+    }
+
+    /**
+     * 특정 사이트의 크롤링 상태 확인
+     */
+    public Map<String, Object> getSiteStatus(String siteId) {
+        String siteName = SUPPORTED_SITES.get(siteId);
+        if (siteName == null) {
+            return Map.of("error", "지원하지 않는 사이트");
+        }
+
+        long jobCount = jobPostingRepository.countBySourceSiteAndIsActiveTrue(siteName);
+
+        // 최근 24시간 내 수집된 공고 수
+        LocalDateTime yesterday = LocalDateTime.now().minusDays(1);
+        long recentJobs = jobPostingRepository.countBySourceSiteAndCreatedAtAfterAndIsActiveTrue(
+                siteName, yesterday);
+
+        return Map.of(
+                "siteId", siteId,
+                "siteName", siteName,
+                "totalJobs", jobCount,
+                "recentJobs", recentJobs,
+                "lastCrawled", getLastCrawledTime(siteName)
+        );
+    }
+
+    /**
+     * 모든 사이트의 상태 정보
+     */
+    public List<Map<String, Object>> getAllSitesStatus() {
+        return SUPPORTED_SITES.entrySet().stream()
+                .map(entry -> getSiteStatus(entry.getKey()))
+                .toList();
+    }
+
+    /**
+     * 사이트별 통계 정보
+     */
+    public Map<String, Object> getSiteStatistics() {
+        Map<String, Object> stats = new HashMap<>();
+
+        for (Map.Entry<String, String> site : SUPPORTED_SITES.entrySet()) {
+            String siteName = site.getValue();
+            long totalJobs = jobPostingRepository.countBySourceSiteAndIsActiveTrue(siteName);
+
+            LocalDateTime weekAgo = LocalDateTime.now().minusDays(7);
+            long weeklyJobs = jobPostingRepository.countBySourceSiteAndCreatedAtAfterAndIsActiveTrue(
+                    siteName, weekAgo);
+
+            stats.put(site.getKey(), Map.of(
+                    "siteName", siteName,
+                    "totalJobs", totalJobs,
+                    "weeklyJobs", weeklyJobs
+            ));
+        }
+
+        return stats;
+    }
+
+    private String getLastCrawledTime(String siteName) {
+        try {
+            Optional<LocalDateTime> lastCrawled = jobPostingRepository
+                    .findFirstBySourceSiteOrderByCreatedAtDesc(siteName)
+                    .map(JobPosting::getCreatedAt);
+
+            return lastCrawled.map(LocalDateTime::toString).orElse("없음");
+        } catch (Exception e) {
+            return "확인 불가";
+        }
+    }
+
+    // ===== 기존 메서드들 (변경 없음) =====
 
     private WebDriver getDriver() {
         WebDriver driver = driverThreadLocal.get();
@@ -119,14 +578,23 @@ public class JobCrawlingService {
 
     private WebDriver createWebDriver() {
         try {
-            WebDriverManager.chromedriver().setup();
+            // 1. OS 감지
+            String os = System.getProperty("os.name").toLowerCase();
+            String driverPath;
 
+            if (os.contains("win")) {
+                driverPath = "drivers/chromedriver-linux-win.exe"; // Windows용
+            } else if (os.contains("linux")) {
+                driverPath = "drivers/chromedriver-linux-linux";   // Linux(Ubuntu)용
+            } else {
+                throw new RuntimeException("지원하지 않는 OS: " + os);
+            }
+
+            System.setProperty("webdriver.chrome.driver", driverPath);
+
+            // 2. ChromeOptions 설정
             ChromeOptions options = new ChromeOptions();
-
-            // 최신 헤드리스
             options.addArguments("--headless=new");
-
-            // 안정성 및 성능 옵션
             options.addArguments("--no-sandbox");
             options.addArguments("--disable-dev-shm-usage");
             options.addArguments("--disable-gpu");
@@ -137,7 +605,6 @@ public class JobCrawlingService {
             options.addArguments("--window-size=1920,1080");
             options.setPageLoadStrategy(PageLoadStrategy.EAGER);
 
-            // 리소스 절감(이미지/미디어 차단)
             Map<String, Object> prefs = new HashMap<>();
             prefs.put("profile.managed_default_content_settings.images", 2);
             prefs.put("profile.managed_default_content_settings.stylesheets", 2);
@@ -148,11 +615,11 @@ public class JobCrawlingService {
             prefs.put("profile.managed_default_content_settings.geolocation", 2);
             options.setExperimentalOption("prefs", prefs);
 
-            // User-Agent 무작위
+            // 3. User-Agent 랜덤 설정
             String[] userAgents = {
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             };
             String userAgent = userAgents[ThreadLocalRandom.current().nextInt(userAgents.length)];
             options.addArguments("--user-agent=" + userAgent);
@@ -161,6 +628,7 @@ public class JobCrawlingService {
             options.setExperimentalOption("excludeSwitches", Arrays.asList("enable-automation"));
             options.addArguments("--disable-blink-features=AutomationControlled");
 
+            // 4. ChromeDriver 생성
             WebDriver driver = new ChromeDriver(options);
 
             driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(IMPLICIT_WAIT_SECONDS));
@@ -169,7 +637,7 @@ public class JobCrawlingService {
             JavascriptExecutor js = (JavascriptExecutor) driver;
             js.executeScript("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})");
 
-            log.debug("WebDriver 생성 성공");
+            log.info("WebDriver 생성 성공");
             return driver;
 
         } catch (Exception e) {
@@ -178,36 +646,9 @@ public class JobCrawlingService {
         }
     }
 
-    public CompletableFuture<String> startManualCrawling() {
-        log.info("수동 채용공고 크롤링 시작");
-        try {
-            return crawlAllSites().thenApply(jobs ->
-                String.format("크롤링 완료: %d개 채용공고 수집", jobs.size())
-            );
-        } catch (Exception e) {
-            log.error("수동 크롤링 시작 실패", e);
-            return CompletableFuture.completedFuture("크롤링 실패: " + e.getMessage());
-        }
-    }
-
-//    @Scheduled(cron = "0 0 9 * * *")
-//    public void scheduledCrawling() {
-//        log.info("정기 채용공고 크롤링 시작");
-//        try {
-//            List<JobPosting> allJobs = crawlAllSitesSync();
-//            saveJobPostings(allJobs);
-//            log.info("정기 크롤링 완료. 총 {}개 채용공고 처리", allJobs.size());
-//        } catch (Exception e) {
-//            log.error("정기 크롤링 실패", e);
-//        } finally {
-//            closeDriver();
-//        }
-//    }
-
     @Async
     public CompletableFuture<List<JobPosting>> crawlAllSites() {
         List<JobPosting> allJobs = crawlAllSitesSync();
-        //saveJobPostings(allJobs);
         closeDriver();
         return CompletableFuture.completedFuture(allJobs);
     }
@@ -216,12 +657,10 @@ public class JobCrawlingService {
         List<JobPosting> allJobs = new ArrayList<>();
 
         try {
-            // 사람인 크롤링
             List<JobPosting> saraminJobs = crawlSaramin();
             allJobs.addAll(saraminJobs);
             log.info("사람인 크롤링 완료: {}개", saraminJobs.size());
 
-            // 잡코리아 크롤링
             List<JobPosting> jobkoreaJobs = crawlJobkorea();
             allJobs.addAll(jobkoreaJobs);
             log.info("잡코리아 크롤링 완료: {}개", jobkoreaJobs.size());
@@ -243,18 +682,17 @@ public class JobCrawlingService {
         try {
             for (int page = 1; page <= 1; page++) {
                 String url = String.format(
-                    "https://www.saramin.co.kr/zf_user/search/recruit?searchType=search&searchword=개발자&recruitPage=%d",
-                    page
+                        "https://www.saramin.co.kr/zf_user/search/recruit?searchType=search&searchword=개발자&recruitPage=%d",
+                        page
                 );
 
                 if (!loadPage(driver, url, "사람인")) {
                     continue;
                 }
 
-                // 페이지 로딩 대기
                 try {
                     wait.until(ExpectedConditions.presenceOfElementLocated(
-                        By.cssSelector(".item_recruit, .list_item, .recruit_item, .job_item")));
+                            By.cssSelector(".item_recruit, .list_item, .recruit_item, .job_item")));
                 } catch (Exception e) {
                     log.warn("사람인 페이지 {} 로딩 대기 실패", page);
                     continue;
@@ -275,7 +713,6 @@ public class JobCrawlingService {
                 }
             }
 
-            // 상세 정보 병렬 크롤링
             if (!jobs.isEmpty()) {
                 fetchDetailsInParallel("사람인", jobs);
             }
@@ -295,8 +732,8 @@ public class JobCrawlingService {
         try {
             for (int page = 1; page <= 3; page++) {
                 String url = String.format(
-                    "https://www.jobkorea.co.kr/Search/?stext=개발자&Page_No=%d",
-                    page
+                        "https://www.jobkorea.co.kr/Search/?stext=개발자&Page_No=%d",
+                        page
                 );
 
                 if (!loadPage(driver, url, "잡코리아")) {
@@ -305,7 +742,7 @@ public class JobCrawlingService {
 
                 try {
                     wait.until(ExpectedConditions.presenceOfElementLocated(
-                        By.cssSelector(".list-default .list-post, .recruit-info, .list-item")));
+                            By.cssSelector(".list-default .list-post, .recruit-info, .list-item")));
                 } catch (Exception e) {
                     log.warn("잡코리아 페이지 {} 로딩 대기 실패", page);
                     continue;
@@ -324,11 +761,8 @@ public class JobCrawlingService {
                         log.warn("잡코리아 개별 채용공고 처리 실패", e);
                     }
                 }
-
-
             }
 
-            // 상세 정보 병렬 크롤링
             if (!jobs.isEmpty()) {
                 fetchDetailsInParallel("잡코리아", jobs);
             }
@@ -346,17 +780,14 @@ public class JobCrawlingService {
                 log.debug("{} 페이지 로드 시도 {}: {}", siteName, retry + 1, url);
                 driver.get(url);
 
-                // 페이지가 완전히 로드될 때까지 대기
                 WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(8));
                 wait.until(webDriver -> ((JavascriptExecutor) webDriver)
-                    .executeScript("return document.readyState").equals("complete"));
+                        .executeScript("return document.readyState").equals("complete"));
 
-                // 봇 차단 페이지 감지
                 String pageSource = driver.getPageSource().toLowerCase();
                 if (pageSource.contains("robot") || pageSource.contains("captcha") ||
-                    pageSource.contains("차단") || pageSource.contains("접근이 제한")) {
+                        pageSource.contains("차단") || pageSource.contains("접근이 제한")) {
                     log.warn("{} 봇 차단 페이지 감지: {}", siteName, url);
-
                     continue;
                 }
 
@@ -365,10 +796,10 @@ public class JobCrawlingService {
 
             } catch (Exception e) {
                 log.warn("{} 페이지 로드 실패 (시도 {}/{}): {} - {}",
-                    siteName, retry + 1, MAX_RETRIES, url, e.getMessage());
+                        siteName, retry + 1, MAX_RETRIES, url, e.getMessage());
 
                 if (retry < MAX_RETRIES - 1) {
-
+                    // 재시도 전 대기
                 }
             }
         }
@@ -379,15 +810,30 @@ public class JobCrawlingService {
 
     private List<WebElement> findJobElements(WebDriver driver, String siteName) {
         String[][] selectors = {
-            // 사람인 셀렉터들
-            {".item_recruit", ".list_item", ".recruit_item", ".job_item",
-             "[data-result]", ".contents .item"},
-            // 잡코리아 셀렉터들
-            {".list-default .list-post", ".recruit-info", ".list-item",
-             ".recruit-item", "[data-gno]", ".post-list-item"}
+                // 사람인 셀렉터들
+                {".item_recruit", ".list_item", ".recruit_item", ".job_item",
+                        "[data-result]", ".contents .item"},
+                // 잡코리아 셀렉터들
+                {".list-default .list-post", ".recruit-info", ".list-item",
+                        ".recruit-item", "[data-gno]", ".post-list-item"},
+                // 원티드 셀렉터들
+                {".JobCard", ".job-card", ".Card", ".position-card"},
+                // 프로그래머스 셀렉터들
+                {".job-item", ".list-item", ".card"},
+                // 점핏 셀렉터들
+                {".position-item", ".job-card", ".card"}
         };
 
-        String[] siteSelectors = siteName.equals("사람인") ? selectors[0] : selectors[1];
+        int siteIndex = switch (siteName) {
+            case "사람인" -> 0;
+            case "잡코리아" -> 1;
+            case "원티드" -> 2;
+            case "프로그래머스" -> 3;
+            case "점핏" -> 4;
+            default -> 0;
+        };
+
+        String[] siteSelectors = selectors[Math.min(siteIndex, selectors.length - 1)];
 
         for (String selector : siteSelectors) {
             try {
@@ -409,10 +855,9 @@ public class JobCrawlingService {
         try {
             JobPosting job = new JobPosting();
 
-            // 제목과 URL
             WebElement titleElement = findElementBySelectors(jobElement,
-                ".job_tit a", ".area_job .job_tit a", ".recruit_info .job_tit a",
-                "a[title]", ".title a", "h2 a", "h3 a");
+                    ".job_tit a", ".area_job .job_tit a", ".recruit_info .job_tit a",
+                    "a[title]", ".title a", "h2 a", "h3 a");
 
             if (titleElement != null) {
                 job.setTitle(cleanText(titleElement.getText()));
@@ -423,10 +868,9 @@ public class JobCrawlingService {
                 job.setSourceUrl(href);
             }
 
-            // 회사명
             WebElement companyElement = findElementBySelectors(jobElement,
-                ".corp_name a", ".area_corp .corp_name a", ".company_nm a",
-                ".corp_nm a", ".company a", ".corp a");
+                    ".corp_name a", ".area_corp .corp_name a", ".company_nm a",
+                    ".corp_nm a", ".company a", ".corp a");
 
             if (companyElement != null) {
                 job.setCompany(cleanText(companyElement.getText()));
@@ -453,9 +897,9 @@ public class JobCrawlingService {
             JobPosting job = new JobPosting();
 
             WebElement titleElement = findElementBySelectors(jobElement,
-                ".post-list-info .title a", "a[href*='/Recruit/']",
-                ".recruit-title a", ".title a", ".job-title a",
-                ".list-post-title a", "h3 a", "h4 a");
+                    ".post-list-info .title a", "a[href*='/Recruit/']",
+                    ".recruit-title a", ".title a", ".job-title a",
+                    ".list-post-title a", "h3 a", "h4 a");
 
             if (titleElement != null) {
                 job.setTitle(cleanText(titleElement.getText()));
@@ -467,9 +911,9 @@ public class JobCrawlingService {
             }
 
             WebElement companyElement = findElementBySelectors(jobElement,
-                ".post-list-corp .name a", ".company-name a",
-                ".corp-name a", ".company a", ".corp a",
-                ".list-post-corp a", ".recruit-corp a");
+                    ".post-list-corp .name a", ".company-name a",
+                    ".corp-name a", ".company a", ".corp a",
+                    ".list-post-corp a", ".recruit-corp a");
 
             if (companyElement != null) {
                 job.setCompany(cleanText(companyElement.getText()));
@@ -504,53 +948,46 @@ public class JobCrawlingService {
                 return;
             }
 
-            // 짧은 대기 후 페이지 상태 확인
-            // 상세 내용이 로드될 때까지 대기 (더 유연한 셀렉터 사용)
             WebDriverWait wait = getWait();
             try {
-                // 더 일반적인 요소부터 확인
                 wait.until(ExpectedConditions.or(
-                    ExpectedConditions.presenceOfElementLocated(By.cssSelector(".user_content")),
-                    ExpectedConditions.presenceOfElementLocated(By.cssSelector(".content")),
-                    ExpectedConditions.presenceOfElementLocated(By.cssSelector(".job_description")),
-                    ExpectedConditions.presenceOfElementLocated(By.cssSelector(".recruit_content")),
-                    ExpectedConditions.presenceOfElementLocated(By.cssSelector("main")),
-                    ExpectedConditions.presenceOfElementLocated(By.cssSelector(".container")),
-                    ExpectedConditions.presenceOfElementLocated(By.cssSelector("[class*='content']")),
-                    ExpectedConditions.presenceOfElementLocated(By.cssSelector("[class*='job']"))
+                        ExpectedConditions.presenceOfElementLocated(By.cssSelector(".user_content")),
+                        ExpectedConditions.presenceOfElementLocated(By.cssSelector(".content")),
+                        ExpectedConditions.presenceOfElementLocated(By.cssSelector(".job_description")),
+                        ExpectedConditions.presenceOfElementLocated(By.cssSelector(".recruit_content")),
+                        ExpectedConditions.presenceOfElementLocated(By.cssSelector("main")),
+                        ExpectedConditions.presenceOfElementLocated(By.cssSelector(".container")),
+                        ExpectedConditions.presenceOfElementLocated(By.cssSelector("[class*='content']")),
+                        ExpectedConditions.presenceOfElementLocated(By.cssSelector("[class*='job']"))
                 ));
                 log.debug("사람인 상세 페이지 로딩 완료: {}", job.getSourceUrl());
             } catch (Exception e) {
                 log.warn("사람인 상세 페이지 로딩 대기 실패: {}, message:{}", job.getSourceUrl(), e.getMessage());
-                // 페이지가 로드되지 않아도 계속 진행 (일부 정보라도 추출 시도)
             }
 
-            // 페이지 소스 확인 및 디버깅
             String pageSource = driver.getPageSource();
             log.debug("페이지 소스 길이: {}, 제목: {}", pageSource.length(), driver.getTitle());
 
-            // 봇 차단 감지
             if (pageSource.toLowerCase().contains("robot") ||
-                pageSource.toLowerCase().contains("captcha") ||
-                pageSource.toLowerCase().contains("차단") ||
-                pageSource.toLowerCase().contains("접근") ||
-                driver.getTitle().toLowerCase().contains("error")) {
+                    pageSource.toLowerCase().contains("captcha") ||
+                    pageSource.toLowerCase().contains("차단") ||
+                    pageSource.toLowerCase().contains("접근") ||
+                    driver.getTitle().toLowerCase().contains("error")) {
                 log.warn("사람인 봇 차단 페이지 감지: {}", job.getSourceUrl());
                 return;
             }
 
-            // 상세 설명 추출 (더 많은 셀렉터 시도)
             WebElement descElement = findElementBySelectors(driver,
-                ".user_content", ".content", ".job_description", ".recruit_content",
-                ".view_content", ".job_info .content", "#recrut_content",
-                ".summary .content", ".cont", ".detail_content", ".job_detail",
-                ".description", "main .content", ".container .content",
-                "[class*='content']", "[class*='description']", "[class*='detail']",
-                "article", "section", ".wrap_jview", ".section");
+                    ".user_content", ".content", ".job_description", ".recruit_content",
+                    ".view_content", ".job_info .content", "#recrut_content",
+                    ".summary .content", ".cont", ".detail_content", ".job_detail",
+                    ".description", "main .content", ".container .content",
+                    "[class*='content']", "[class*='description']", "[class*='detail']",
+                    "article", "section", ".wrap_jview", ".section");
 
             if (descElement != null) {
                 String description = cleanText(descElement.getText());
-                if (description != null && description.length() > 20) {  // 최소 길이 체크
+                if (description != null && description.length() > 20) {
                     job.setDescription(description);
                     log.debug("사람인 설명 추출 성공: {} characters", description.length());
                 } else {
@@ -559,25 +996,20 @@ public class JobCrawlingService {
             } else {
                 log.debug("사람인 설명 요소를 찾을 수 없음: {}", job.getSourceUrl());
 
-                // 디버깅을 위해 페이지 구조 분석
                 if (log.isDebugEnabled()) {
                     debugPageStructure(driver, job.getSourceUrl());
                 }
             }
 
-            // 추가 정보 추출
             extractAdditionalJobInfo(driver, job);
-
             saveIndividualJob(job);
 
         } catch (Exception e) {
             log.warn("사람인 상세 정보 크롤링 실패: {}, error: {}", job.getSourceUrl(), e.getMessage());
         } finally {
-            // 원래 페이지로 돌아가기 (선택사항)
             try {
                 if (!originalUrl.equals(driver.getCurrentUrl())) {
                     driver.navigate().back();
-
                 }
             } catch (Exception e) {
                 log.debug("원래 페이지로 돌아가기 실패", e);
@@ -598,21 +1030,22 @@ public class JobCrawlingService {
             WebDriverWait wait = getWait();
             try {
                 wait.until(ExpectedConditions.presenceOfElementLocated(
-                    By.cssSelector(".section-content, .content, .job-description")));
+                        By.cssSelector(".section-content, .content, .job-description")));
             } catch (Exception e) {
                 log.warn("잡코리아 상세 페이지 로딩 대기 실패: {}", job.getSourceUrl());
             }
 
             WebElement descElement = findElementBySelectors(driver,
-                ".section-content", ".content", ".job-description",
-                ".recruit-content", ".view-content", ".detail-content",
-                ".job-detail", ".description");
+                    ".section-content", ".content", ".job-description",
+                    ".recruit-content", ".view-content", ".detail-content",
+                    ".job-detail", ".description");
 
             if (descElement != null) {
                 job.setDescription(cleanText(descElement.getText()));
             }
 
             extractAdditionalJobInfo(driver, job);
+            saveIndividualJob(job);
 
         } catch (Exception e) {
             log.warn("잡코리아 상세 정보 크롤링 실패: {}", job.getSourceUrl(), e);
@@ -620,11 +1053,107 @@ public class JobCrawlingService {
             try {
                 if (!originalUrl.equals(driver.getCurrentUrl())) {
                     driver.navigate().back();
-
                 }
             } catch (Exception e) {
                 log.debug("원래 페이지로 돌아가기 실패", e);
             }
+        }
+    }
+
+    // 새로운 사이트들의 상세 크롤링 메서드들
+    private void crawlWantedDetails(JobPosting job, WebDriver driver) {
+        if (job.getSourceUrl() == null) return;
+
+        try {
+            if (!loadPage(driver, job.getSourceUrl(), "원티드")) {
+                return;
+            }
+
+            WebDriverWait wait = getWait();
+            try {
+                wait.until(ExpectedConditions.presenceOfElementLocated(
+                        By.cssSelector(".JobDescription, .job-description, .description")));
+            } catch (Exception e) {
+                log.warn("원티드 상세 페이지 로딩 대기 실패: {}", job.getSourceUrl());
+            }
+
+            WebElement descElement = findElementBySelectors(driver,
+                    ".JobDescription", ".job-description", ".description",
+                    ".content", ".detail-content");
+
+            if (descElement != null) {
+                job.setDescription(cleanText(descElement.getText()));
+            }
+
+            extractAdditionalJobInfo(driver, job);
+            saveIndividualJob(job);
+
+        } catch (Exception e) {
+            log.warn("원티드 상세 정보 크롤링 실패: {}", job.getSourceUrl(), e);
+        }
+    }
+
+    private void crawlProgrammersDetails(JobPosting job, WebDriver driver) {
+        if (job.getSourceUrl() == null) return;
+
+        try {
+            if (!loadPage(driver, job.getSourceUrl(), "프로그래머스")) {
+                return;
+            }
+
+            WebDriverWait wait = getWait();
+            try {
+                wait.until(ExpectedConditions.presenceOfElementLocated(
+                        By.cssSelector(".job-content, .content, .description")));
+            } catch (Exception e) {
+                log.warn("프로그래머스 상세 페이지 로딩 대기 실패: {}", job.getSourceUrl());
+            }
+
+            WebElement descElement = findElementBySelectors(driver,
+                    ".job-content", ".content", ".description",
+                    ".detail-content", ".job-description");
+
+            if (descElement != null) {
+                job.setDescription(cleanText(descElement.getText()));
+            }
+
+            extractAdditionalJobInfo(driver, job);
+            saveIndividualJob(job);
+
+        } catch (Exception e) {
+            log.warn("프로그래머스 상세 정보 크롤링 실패: {}", job.getSourceUrl(), e);
+        }
+    }
+
+    private void crawlJumpitDetails(JobPosting job, WebDriver driver) {
+        if (job.getSourceUrl() == null) return;
+
+        try {
+            if (!loadPage(driver, job.getSourceUrl(), "점핏")) {
+                return;
+            }
+
+            WebDriverWait wait = getWait();
+            try {
+                wait.until(ExpectedConditions.presenceOfElementLocated(
+                        By.cssSelector(".position-description, .content, .description")));
+            } catch (Exception e) {
+                log.warn("점핏 상세 페이지 로딩 대기 실패: {}", job.getSourceUrl());
+            }
+
+            WebElement descElement = findElementBySelectors(driver,
+                    ".position-description", ".content", ".description",
+                    ".detail-content", ".job-description");
+
+            if (descElement != null) {
+                job.setDescription(cleanText(descElement.getText()));
+            }
+
+            extractAdditionalJobInfo(driver, job);
+            saveIndividualJob(job);
+
+        } catch (Exception e) {
+            log.warn("점핏 상세 정보 크롤링 실패: {}", job.getSourceUrl(), e);
         }
     }
 
@@ -658,19 +1187,17 @@ public class JobCrawlingService {
 
     private void setBasicJobInfo(WebElement jobElement, JobPosting job) {
         try {
-            // 지역
             WebElement locationElement = findElementBySelectors(jobElement,
-                ".job_condition span", ".area_job .condition span",
-                ".job_meta span", ".location", ".work_place",
-                ".post-list-info .option .location", ".area", ".region");
+                    ".job_condition span", ".area_job .condition span",
+                    ".job_meta span", ".location", ".work_place",
+                    ".post-list-info .option .location", ".area", ".region");
 
             if (locationElement != null) {
                 job.setLocation(cleanText(locationElement.getText()));
             }
 
-            // 경력, 고용형태 등
             List<WebElement> conditionSpans = jobElement.findElements(
-                By.cssSelector(".job_condition span, .condition span"));
+                    By.cssSelector(".job_condition span, .condition span"));
 
             if (conditionSpans.size() > 1) {
                 job.setExperienceLevel(cleanText(conditionSpans.get(1).getText()));
@@ -686,26 +1213,23 @@ public class JobCrawlingService {
 
     private void extractAdditionalJobInfo(WebDriver driver, JobPosting job) {
         try {
-            // 요구사항
             WebElement reqElement = findElementBySelectors(driver,
-                ".qualification", ".requirements", ".job_requirement",
-                ".recruit_requirement", ".requirement");
+                    ".qualification", ".requirements", ".job_requirement",
+                    ".recruit_requirement", ".requirement");
 
             if (reqElement != null) {
                 job.setRequirements(cleanText(reqElement.getText()));
             }
 
-            // 혜택
             WebElement benefitElement = findElementBySelectors(driver,
-                ".welfare", ".benefits", ".benefit_info", ".benefit");
+                    ".welfare", ".benefits", ".benefit_info", ".benefit");
 
             if (benefitElement != null) {
                 job.setBenefits(cleanText(benefitElement.getText()));
             }
 
-            // 급여
             WebElement salaryElement = findElementBySelectors(driver,
-                ".salary", ".salary_info", ".pay_info", ".money", ".pay");
+                    ".salary", ".salary_info", ".pay_info", ".money", ".pay");
 
             if (salaryElement != null) {
                 job.setSalary(cleanText(salaryElement.getText()));
@@ -723,21 +1247,19 @@ public class JobCrawlingService {
 
     private boolean isValidJob(JobPosting job) {
         return job.getTitle() != null && !job.getTitle().trim().isEmpty() &&
-               job.getCompany() != null && !job.getCompany().trim().isEmpty();
+                job.getCompany() != null && !job.getCompany().trim().isEmpty();
     }
 
-    // 디버깅용: 페이지 구조 분석
     private void debugPageStructure(WebDriver driver, String url) {
         try {
             log.info("=== 페이지 구조 분석: {} ===", url);
             log.info("페이지 제목: {}", driver.getTitle());
             log.info("현재 URL: {}", driver.getCurrentUrl());
 
-            // 주요 컨테이너 요소들 확인
             String[] containerSelectors = {
-                "main", "article", "section", ".container", ".content", ".wrap",
-                "[class*='content']", "[class*='job']", "[class*='detail']",
-                "body > div", ".inner", ".section"
+                    "main", "article", "section", ".container", ".content", ".wrap",
+                    "[class*='content']", "[class*='job']", "[class*='detail']",
+                    "body > div", ".inner", ".section"
             };
 
             for (String selector : containerSelectors) {
@@ -757,7 +1279,6 @@ public class JobCrawlingService {
                 }
             }
 
-            // 페이지 소스의 일부 출력 (처음 500자)
             String pageSource = driver.getPageSource();
             if (pageSource.length() > 500) {
                 log.info("페이지 소스 (처음 500자): {}", pageSource.substring(0, 500));
@@ -768,7 +1289,6 @@ public class JobCrawlingService {
         }
     }
 
-    // 테스트용 메서드
     public void testSpecificUrl(String url, String siteName) {
         log.info("URL 테스트 시작: {}", url);
 
@@ -777,12 +1297,10 @@ public class JobCrawlingService {
             if (loadPage(driver, url, siteName)) {
                 log.info("페이지 로드 성공");
 
-                // 디버깅 정보 출력
                 debugPageStructure(driver, url);
 
-                // 주요 요소들 확인
                 List<WebElement> importantElements = driver.findElements(
-                    By.cssSelector("h1, h2, h3, .title, .job_tit"));
+                        By.cssSelector("h1, h2, h3, .title, .job_tit"));
 
                 for (int i = 0; i < Math.min(5, importantElements.size()); i++) {
                     WebElement elem = importantElements.get(i);
@@ -796,45 +1314,36 @@ public class JobCrawlingService {
         }
     }
 
-    // 기존 메서드들 (saveJobPostings, createCleanJobPosting 등)
-    private void saveJobPostings(List<JobPosting> jobs) {
-        for (JobPosting job : jobs) {
-            saveIndividualJob(job);
-        }
-    }
-
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void saveIndividualJob(JobPosting job) {
-      if (!isValidJob(job)) {
-        log.warn("필수 필드 누락된 채용공고 스킵: {} - {}", job.getCompany(), job.getTitle());
-        return;
-      }
-
-      if (!jobPostingRepository.existsBySourceUrlAndIsActiveTrue(job.getSourceUrl())) {
-        JobPosting newJob = createCleanJobPosting(job);
-
-        // 1) 먼저 저장 + 즉시 flush
-        JobPosting saved = jobPostingRepository.saveAndFlush(newJob);
-
-        try {
-          String content = buildContentForEmbedding(saved);
-          if (!content.trim().isEmpty()) {
-            float[] embeddingArray = embeddingService.embed(content);
-            saved.setEmbedding(embeddingArray); // 애플리케이션 보관용(@Transient라면 DB엔 영향 없음)
-            String embeddingText = floatArrayToVectorString(embeddingArray);
-
-            // 2) 같은 트랜잭션에서 네이티브 UPDATE (flushAutomatically로 안전)
-            jobPostingRepository.updateEmbedding(saved.getId(), embeddingText);
-          }
-        } catch (Exception embeddingError) {
-          log.warn("임베딩 생성 실패, null로 설정: {} - {}", saved.getCompany(), saved.getTitle(), embeddingError);
-          saved.setEmbedding(null);
+        if (!isValidJob(job)) {
+            log.warn("필수 필드 누락된 채용공고 스킵: {} - {}", job.getCompany(), job.getTitle());
+            return;
         }
 
-        log.debug("새 채용공고 저장: {} - {}", saved.getCompany(), saved.getTitle());
-      } else {
-        log.debug("중복 채용공고 스킵: {} - {}", job.getCompany(), job.getTitle());
-      }
+        if (!jobPostingRepository.existsBySourceUrlAndIsActiveTrue(job.getSourceUrl())) {
+            JobPosting newJob = createCleanJobPosting(job);
+
+            JobPosting saved = jobPostingRepository.saveAndFlush(newJob);
+
+            try {
+                String content = buildContentForEmbedding(saved);
+                if (!content.trim().isEmpty()) {
+                    float[] embeddingArray = embeddingService.embed(content);
+                    saved.setEmbedding(embeddingArray);
+                    String embeddingText = floatArrayToVectorString(embeddingArray);
+
+                    jobPostingRepository.updateEmbedding(saved.getId(), embeddingText);
+                }
+            } catch (Exception embeddingError) {
+                log.warn("임베딩 생성 실패, null로 설정: {} - {}", saved.getCompany(), saved.getTitle(), embeddingError);
+                saved.setEmbedding(null);
+            }
+
+            log.debug("새 채용공고 저장: {} - {}", saved.getCompany(), saved.getTitle());
+        } else {
+            log.debug("중복 채용공고 스킵: {} - {}", job.getCompany(), job.getTitle());
+        }
     }
 
     private JobPosting createCleanJobPosting(JobPosting source) {
@@ -907,18 +1416,13 @@ public class JobCrawlingService {
         }
     }
 
-    // ------------------------------
-    // 성능 개선: 상세 페이지 병렬 크롤링 유틸리티
-    // ------------------------------
     private void fetchDetailsInParallel(String siteName, List<JobPosting> jobs) {
         List<Callable<Void>> tasks = new ArrayList<>();
 
         for (JobPosting job : jobs) {
-            // 소스 URL 없으면 상세 스킵
             if (job.getSourceUrl() == null || job.getSourceUrl().isBlank()) continue;
 
             tasks.add(() -> {
-                // 이미 저장된 활성 공고면 상세 스킵 (네트워크 비용 절감)
                 try {
                     Boolean exists = jobPostingRepository.existsBySourceUrlAndIsActiveTrue(job.getSourceUrl());
                     if (Boolean.TRUE.equals(exists)) {
@@ -926,21 +1430,21 @@ public class JobCrawlingService {
                         return null;
                     }
                 } catch (Exception e) {
-                    // 저장소 조회 실패 시 상세 시도는 계속
                     log.debug("기존 여부 확인 실패, 상세 시도 진행: {}", job.getSourceUrl());
                 }
 
                 WebDriver localDriver = getDriver();
                 try {
-                    if ("사람인".equals(siteName)) {
-                        crawlSaraminDetails(job, localDriver);
-                    } else {
-                        crawlJobkoreaDetails(job, localDriver);
+                    switch (siteName) {
+                        case "사람인" -> crawlSaraminDetails(job, localDriver);
+                        case "잡코리아" -> crawlJobkoreaDetails(job, localDriver);
+                        case "원티드" -> crawlWantedDetails(job, localDriver);
+                        case "프로그래머스" -> crawlProgrammersDetails(job, localDriver);
+                        case "점핏" -> crawlJumpitDetails(job, localDriver);
                     }
                 } catch (Exception e) {
                     log.warn("상세 크롤링 작업 실패: {} - {}", siteName, job.getSourceUrl(), e);
                 } finally {
-                    // 각 스레드별 드라이버 정리
                     closeDriver();
                 }
                 return null;
@@ -953,7 +1457,7 @@ public class JobCrawlingService {
             List<Future<Void>> futures = detailExecutor.invokeAll(tasks);
             for (Future<Void> f : futures) {
                 try {
-                    f.get(60, TimeUnit.SECONDS); // 태스크 타임아웃
+                    f.get(60, TimeUnit.SECONDS);
                 } catch (TimeoutException te) {
                     log.warn("상세 크롤링 타임아웃");
                 } catch (ExecutionException ee) {
@@ -978,5 +1482,4 @@ public class JobCrawlingService {
         sb.append("]");
         return sb.toString();
     }
-
 }
