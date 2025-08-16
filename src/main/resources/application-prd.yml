@@ -5,7 +5,6 @@ spring:
     password: ${DB_PASSWORD}
     driver-class-name: com.p6spy.engine.spy.P6SpyDriver
 
-
 logging:
   level:
     p6spy: DEBUG
@@ -23,9 +22,12 @@ langchain:
   target-dimensions: ${TARGET_DIMENSIONS}
   openai:
     api-key: ${OPENAI_API_KEY}
-    model: text-embedding-3-small
+    embeddingModel: text-embedding-3-small
+    aiChatModel: gemini-1.5-flash     # 또는 gemini-1.5-pro
   gemini:
     api-key: ${GEMINI_API_KEY}
-    model: embedding-001
+    embeddingModel: embedding-001
+    aiChatModel: gemini-1.5-flash     # 또는 gemini-1.5-pro
   embedding:
-    model: all-minilm-l6-v2
+    embeddingModel: all-minilm-l6-v2
+    aiChatModel: gemini-1.5-flash     # 또는 gemini-1.5-pro
