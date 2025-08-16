@@ -1,8 +1,8 @@
 package com.ai.hybridsearch.controller;
 
 import com.ai.hybridsearch.dto.SearchResult;
-import com.ai.hybridsearch.service.HybridSearchService;
-import com.ai.hybridsearch.service.SearchAnalyticsService;
+import com.ai.hybridsearch.service.impl.HybridSearchServiceImpl;
+import com.ai.hybridsearch.service.impl.SearchAnalyticsServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -16,10 +16,10 @@ import java.util.Map;
 public class SearchController {
     
     @Autowired
-    private HybridSearchService hybridSearchService;
+    private HybridSearchServiceImpl hybridSearchServiceImpl;
 
     @Autowired
-    private SearchAnalyticsService searchAnalyticsService;
+    private SearchAnalyticsServiceImpl searchAnalyticsServiceImpl;
     
     @GetMapping("/lexical")
     public ResponseEntity<List<SearchResult>> lexicalSearch(
@@ -28,8 +28,8 @@ public class SearchController {
             @RequestParam(defaultValue = "10") int limit) {
 
         // 순수 키워드 검색 - 빠르고 정확한 매칭 위주
-        List<SearchResult> results = hybridSearchService.lexicalSearch(query, category, limit);
-        searchAnalyticsService.recordSearch(query, category, results.size(), 10); // 0은 응답 시간 예시
+        List<SearchResult> results = hybridSearchServiceImpl.lexicalSearch(query, category, limit);
+        searchAnalyticsServiceImpl.recordSearch(query, category, results.size(), 10); // 0은 응답 시간 예시
 
         return ResponseEntity.ok(results);
     }
@@ -41,8 +41,8 @@ public class SearchController {
             @RequestParam(defaultValue = "10") int limit) {
 
         // 하이브리드 검색 - 의미적 유사도까지 고려한 고품질 결과
-        List<SearchResult> results = hybridSearchService.hybridSearch(query, category, limit);
-        searchAnalyticsService.recordSearch(query, category, results.size(), 10); // 0은 응답 시간 예시
+        List<SearchResult> results = hybridSearchServiceImpl.hybridSearch(query, category, limit);
+        searchAnalyticsServiceImpl.recordSearch(query, category, results.size(), 10); // 0은 응답 시간 예시
 
         return ResponseEntity.ok(results);
     }
@@ -54,8 +54,8 @@ public class SearchController {
             @RequestParam(defaultValue = "10") int limit) {
 
         // 하이브리드 검색 - 의미적 유사도까지 고려한 고품질 결과
-        List<SearchResult> results = hybridSearchService.semanticSearch(query, category, limit);
-        searchAnalyticsService.recordSearch(query, category, results.size(), 10); // 0은 응답 시간 예시
+        List<SearchResult> results = hybridSearchServiceImpl.semanticSearch(query, category, limit);
+        searchAnalyticsServiceImpl.recordSearch(query, category, results.size(), 10); // 0은 응답 시간 예시
 
         return ResponseEntity.ok(results);
     }
@@ -73,7 +73,7 @@ public class SearchController {
         String category = (String) searchRequest.get("category");
         Integer limit = (Integer) searchRequest.getOrDefault("limit", 10);
         
-        List<SearchResult> results = hybridSearchService.searchWithBoolean(
+        List<SearchResult> results = hybridSearchServiceImpl.searchWithBoolean(
             mustHave, shouldHave, mustNotHave, category, limit
         );
         return ResponseEntity.ok(results);
@@ -87,10 +87,10 @@ public class SearchController {
             @RequestParam(defaultValue = "false") boolean usePhrase,
             @RequestParam(defaultValue = "10") int limit) {
         
-        List<SearchResult> results = hybridSearchService.advancedHybridSearch(
+        List<SearchResult> results = hybridSearchServiceImpl.advancedHybridSearch(
             query, category, useFuzzy, usePhrase, limit
         );
-        searchAnalyticsService.recordSearch(query, category, results.size(), 10); // 0은 응답 시간 예시
+        searchAnalyticsServiceImpl.recordSearch(query, category, results.size(), 10); // 0은 응답 시간 예시
 
         return ResponseEntity.ok(results);
     }
@@ -100,7 +100,7 @@ public class SearchController {
             @PathVariable String category,
             @RequestParam(defaultValue = "10") int limit) {
         
-        List<SearchResult> results = hybridSearchService.searchByCategory(category, limit);
+        List<SearchResult> results = hybridSearchServiceImpl.searchByCategory(category, limit);
         return ResponseEntity.ok(results);
     }
 }

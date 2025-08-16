@@ -8,7 +8,6 @@ spring:
       max-lifetime: 1800000     # 30분
       connection-timeout: 30000
       pool-name: HikariCP
-      leak-detection-threshold: 5000  # 5초 이상 반환 안되면 로그
   jpa:
     hibernate:
       ddl-auto: update

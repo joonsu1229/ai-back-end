@@ -3,8 +3,8 @@ package com.ai.hybridsearch.controller;
 
 import com.ai.hybridsearch.entity.JobPosting;
 import com.ai.hybridsearch.repository.JobPostingRepository;
-import com.ai.hybridsearch.service.JobCrawlingService;
-import com.ai.hybridsearch.service.JobSearchService;
+import com.ai.hybridsearch.service.impl.JobCrawlingServiceImpl;
+import com.ai.hybridsearch.service.impl.JobSearchServiceImpl;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -32,10 +32,10 @@ public class JobPostingController {
     private JobPostingRepository jobPostingRepository;
 
     @Autowired
-    private JobCrawlingService jobCrawlingService;
+    private JobCrawlingServiceImpl jobCrawlingServiceImpl;
 
     @Autowired
-    private JobSearchService jobSearchService;
+    private JobSearchServiceImpl jobSearchServiceImpl;
 
     // ===== 기존 API들 =====
 
@@ -130,7 +130,7 @@ public class JobPostingController {
         String query = (String) request.get("query");
         Integer limit = (Integer) request.getOrDefault("limit", 10);
 
-        List<JobPosting> similarJobs = jobSearchService.searchSimilarJobs(query, limit);
+        List<JobPosting> similarJobs = jobSearchServiceImpl.searchSimilarJobs(query, limit);
         return ResponseEntity.ok(similarJobs);
     }
 
@@ -142,7 +142,7 @@ public class JobPostingController {
         String query = (String) request.get("query");
         Integer limit = (Integer) request.getOrDefault("limit", 20);
 
-        List<JobPosting> results = jobSearchService.hybridSearch(query, limit);
+        List<JobPosting> results = jobSearchServiceImpl.hybridSearch(query, limit);
         return ResponseEntity.ok(results);
     }
 
@@ -152,7 +152,7 @@ public class JobPostingController {
     @PostMapping("/crawl")
     public ResponseEntity<String> startCrawling() {
         try {
-            CompletableFuture<String> result = jobCrawlingService.startManualCrawling();
+            CompletableFuture<String> result = jobCrawlingServiceImpl.startManualCrawling();
             return ResponseEntity.ok("전체 사이트 크롤링이 시작되었습니다. 백그라운드에서 실행됩니다.");
         } catch (Exception e) {
             log.error("크롤링 시작 실패", e);
@@ -181,7 +181,7 @@ public class JobPostingController {
             }
 
             // 지원하지 않는 사이트 체크
-            Map<String, String> supportedSites = jobCrawlingService.getSupportedSites();
+            Map<String, String> supportedSites = jobCrawlingServiceImpl.getSupportedSites();
             List<String> invalidSites = sites.stream()
                     .filter(site -> !supportedSites.containsKey(site))
                     .toList();
@@ -197,7 +197,7 @@ public class JobPostingController {
                         ));
             }
 
-            CompletableFuture<String> result = jobCrawlingService.startCrawlingBySites(sites);
+            CompletableFuture<String> result = jobCrawlingServiceImpl.startCrawlingBySites(sites);
 
             List<String> siteNames = sites.stream()
                     .map(supportedSites::get)
@@ -228,7 +228,7 @@ public class JobPostingController {
     @GetMapping("/crawl/sites")
     public ResponseEntity<Map<String, Object>> getSupportedSites() {
         try {
-            Map<String, String> sites = jobCrawlingService.getSupportedSites();
+            Map<String, String> sites = jobCrawlingServiceImpl.getSupportedSites();
 
             // 사이트별 기본 정보 추가
             Map<String, Map<String, Object>> siteDetails = sites.entrySet().stream()
@@ -265,7 +265,7 @@ public class JobPostingController {
     @GetMapping("/crawl/sites/status")
     public ResponseEntity<Map<String, Object>> getAllSitesStatus() {
         try {
-            List<Map<String, Object>> sitesStatus = jobCrawlingService.getAllSitesStatus();
+            List<Map<String, Object>> sitesStatus = jobCrawlingServiceImpl.getAllSitesStatus();
 
             // 전체 통계 계산
             long totalJobs = sitesStatus.stream()
@@ -303,7 +303,7 @@ public class JobPostingController {
     @GetMapping("/crawl/sites/{siteId}/status")
     public ResponseEntity<Map<String, Object>> getSiteStatus(@PathVariable String siteId) {
         try {
-            Map<String, Object> status = jobCrawlingService.getSiteStatus(siteId);
+            Map<String, Object> status = jobCrawlingServiceImpl.getSiteStatus(siteId);
 
             if (status.containsKey("error")) {
                 return ResponseEntity.badRequest()
@@ -338,7 +338,7 @@ public class JobPostingController {
     @GetMapping("/stats/sites")
     public ResponseEntity<Map<String, Object>> getSiteStatistics() {
         try {
-            Map<String, Object> statistics = jobCrawlingService.getSiteStatistics();
+            Map<String, Object> statistics = jobCrawlingServiceImpl.getSiteStatistics();
 
             return ResponseEntity.ok(Map.of(
                     "success", true,
@@ -369,7 +369,7 @@ public class JobPostingController {
             @RequestParam(defaultValue = "desc") String sortDir) {
 
         try {
-            Map<String, String> supportedSites = jobCrawlingService.getSupportedSites();
+            Map<String, String> supportedSites = jobCrawlingServiceImpl.getSupportedSites();
             String siteName = supportedSites.get(siteId);
 
             if (siteName == null) {
