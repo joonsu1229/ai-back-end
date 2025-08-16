@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -295,26 +296,26 @@ public class JobSearchService {
             // Native query 결과를 JobPosting 객체로 매핑
             // 실제 컬럼 순서에 맞게 수정 필요
             job.setId(((Number) result[0]).longValue());
-            job.setTitle((String) result[1]);
+            job.setTitle((String) result[16]);
             job.setCompany((String) result[2]);
-            job.setDescription((String) result[3]);
-            job.setLocation((String) result[4]);
-            job.setExperienceLevel((String) result[5]);
-            job.setSalary((String) result[6]);
+            job.setDescription((String) result[5]);
+            job.setLocation((String) result[11]);
+            job.setExperienceLevel((String) result[8]);
+            job.setSalary((String) result[13]);
             job.setEmploymentType((String) result[7]);
-            job.setJobCategory((String) result[8]);
-            job.setRequirements((String) result[9]);
-            job.setBenefits((String) result[10]);
-            job.setSourceSite((String) result[11]);
-            job.setSourceUrl((String) result[12]);
+            job.setJobCategory((String) result[10]);
+            job.setRequirements((String) result[12]);
+            job.setBenefits((String) result[1]);
+            job.setSourceSite((String) result[14]);
+            job.setSourceUrl((String) result[15]);
 
             // timestamp 처리
-            if (result[13] != null) {
-                job.setDeadline((LocalDateTime) result[13]);
+            if (result[4] != null) {
+                job.setCreatedAt(((Timestamp) result[4]).toLocalDateTime());
             }
-            job.setIsActive((Boolean) result[14]);
-            job.setCreatedAt((LocalDateTime) result[15]);
-            job.setUpdatedAt((LocalDateTime) result[16]);
+            job.setIsActive((Boolean) result[9]);
+            job.setCreatedAt(((Timestamp) result[3]).toLocalDateTime());
+            job.setCreatedAt(((Timestamp) result[17]).toLocalDateTime());
 
             // similarity score는 별도 처리 가능 (필요시)
 
