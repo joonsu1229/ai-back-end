@@ -2,7 +2,7 @@ package com.ai.hybridsearch.controller;
 
 import com.ai.hybridsearch.entity.Document;
 import com.ai.hybridsearch.repository.DocumentRepository;
-import com.ai.hybridsearch.service.impl.DocumentServiceImpl;
+import com.ai.hybridsearch.service.DocumentService;
 import com.ai.hybridsearch.service.EmbeddingService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
