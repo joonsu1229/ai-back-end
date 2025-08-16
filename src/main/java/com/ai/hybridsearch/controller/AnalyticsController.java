@@ -1,6 +1,6 @@
 package com.ai.hybridsearch.controller;
 
-import com.ai.hybridsearch.service.SearchAnalyticsService;
+import com.ai.hybridsearch.service.impl.SearchAnalyticsServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -13,7 +13,7 @@ import java.util.Map;
 public class AnalyticsController {
     
     @Autowired
-    private SearchAnalyticsService analyticsService;
+    private SearchAnalyticsServiceImpl analyticsService;
     
     @GetMapping("/popular-queries")
     public ResponseEntity<Map<String, Long>> getPopularQueries(
