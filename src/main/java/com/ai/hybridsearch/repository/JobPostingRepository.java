@@ -22,7 +22,7 @@ public interface JobPostingRepository extends JpaRepository<JobPosting, Long> {
     // -------------------
 
     @Transactional(readOnly = true)
-    @Query(value = "SELECT jp FROM JobPosting jp WHERE jp.isActive = true ORDER BY jp.createdAt DESC",
+    @Query(value = "SELECT jp FROM JobPosting jp WHERE jp.isActive = true ORDER BY jp.deadline ASC",
             countQuery = "SELECT count(jp) FROM JobPosting jp WHERE jp.isActive = true")
     Page<JobPosting> findByIsActiveTrue(Pageable pageable);
 
