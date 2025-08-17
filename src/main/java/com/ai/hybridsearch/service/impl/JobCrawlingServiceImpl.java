@@ -103,7 +103,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
         try {
             detailExecutor = Executors.newFixedThreadPool(DETAIL_PARALLELISM);
             aiCallSemaphore = new Semaphore(MAX_CONCURRENT_AI_CALLS);
-            log.info("JobCrawlingService 초기화 완료 - AI 호출 제한 적용 (토큰 제한 최적화), 병렬 스레드 {}개 준비", DETAIL_PARALLELISM);
+            log.debug("JobCrawlingService 초기화 완료 - AI 호출 제한 적용 (토큰 제한 최적화), 병렬 스레드 {}개 준비", DETAIL_PARALLELISM);
         } catch (Exception e) {
             log.error("초기화 실패", e);
         }
@@ -123,7 +123,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
                 Thread.currentThread().interrupt();
             }
         }
-        log.info("JobCrawlingService 정리 완료");
+        log.debug("JobCrawlingService 정리 완료");
     }
 
     /**
@@ -136,7 +136,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
         if (today.isAfter(lastResetDate)) {
             dailyApiCallCount.set(0);
             lastResetDate = today;
-            log.info("일일 API 호출 카운터 리셋");
+            log.debug("일일 API 호출 카운터 리셋");
         }
     }
 
@@ -159,7 +159,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
         int estimatedTokens = html.length() / ESTIMATED_CHARS_PER_TOKEN;
         boolean suitable = html.length() <= MAX_HTML_SIZE_FOR_AI && estimatedTokens <= SAFE_TOKEN_LIMIT;
 
-        log.info("HTML 토큰 적합성 체크 - 크기: {}자, 예상 토큰: {}, 적합: {}",
+        log.debug("HTML 토큰 적합성 체크 - 크기: {}자, 예상 토큰: {}, 적합: {}",
                 html.length(), estimatedTokens, suitable);
 
         return suitable;
@@ -182,7 +182,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
                 return html;
             }
 
-            log.info("HTML 크기 축소 필요 - 원본 크기: {}자", html.length());
+            log.debug("HTML 크기 축소 필요 - 원본 크기: {}자", html.length());
 
             // 1단계: 불필요한 태그 제거 (스크립트, 스타일 등)
             String cleaned = html
@@ -197,11 +197,11 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
                 cleaned = cleaned.substring(0, MAX_HTML_SIZE_FOR_AI) + "...";
             }
 
-            log.info("HTML 크기 축소 완료 - 축소 후 크기: {}자", cleaned.length());
+            log.debug("HTML 크기 축소 완료 - 축소 후 크기: {}자", cleaned.length());
             return cleaned;
 
         } catch (Exception e) {
-            log.warn("HTML 전처리 실패, 앞부분만 사용", e);
+            log.debug("HTML 전처리 실패, 앞부분만 사용", e);
             return html.length() > MAX_HTML_SIZE_FOR_AI ?
                     html.substring(0, MAX_HTML_SIZE_FOR_AI) + "..." : html;
         }
@@ -212,14 +212,14 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
      */
     private List<JobPosting> callAiExtractionWithLimits(String html, String siteName) {
         if (!canMakeApiCall()) {
-            log.warn("일일 API 호출 제한 도달: {}/{}", dailyApiCallCount.get(), MAX_DAILY_API_CALLS);
+            log.debug("일일 API 호출 제한 도달: {}/{}", dailyApiCallCount.get(), MAX_DAILY_API_CALLS);
             return new ArrayList<>();
         }
 
         // HTML 크기 체크 및 전처리
         String processedHtml = preprocessHtmlForTokenLimit(html);
         if (!isHtmlSuitableForAI(processedHtml)) {
-            log.warn("HTML이 토큰 제한에 적합하지 않음 - 사이트: {}, 크기: {}자", siteName, processedHtml.length());
+            log.debug("HTML이 토큰 제한에 적합하지 않음 - 사이트: {}, 크기: {}자", siteName, processedHtml.length());
             return new ArrayList<>();
         }
 
@@ -235,7 +235,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
 
                 dailyApiCallCount.incrementAndGet();
 
-                log.info("AI 추출 성공 - 호출 횟수: {}/{}, 응답시간: {}ms, 결과: {}개",
+                log.debug("AI 추출 성공 - 호출 횟수: {}/{}, 응답시간: {}ms, 결과: {}개",
                         dailyApiCallCount.get(), MAX_DAILY_API_CALLS, (endTime - startTime), result.size());
 
                 return result;
@@ -270,14 +270,14 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
      */
     private JobPosting callAiDetailExtractionWithLimits(JobPosting job, String html) {
         if (!canMakeApiCall()) {
-            log.warn("일일 API 호출 제한으로 상세 정보 추출 스킵: {}", job.getSourceUrl());
+            log.debug("일일 API 호출 제한으로 상세 정보 추출 스킵: {}", job.getSourceUrl());
             return job;
         }
 
         // HTML 크기 체크 및 전처리
         String processedHtml = preprocessHtmlForTokenLimit(html);
 /*        if (!isHtmlSuitableForAI(processedHtml)) {
-            log.warn("상세 HTML이 토큰 제한에 적합하지 않음 - URL: {}, 크기: {}자",
+            log.debug("상세 HTML이 토큰 제한에 적합하지 않음 - URL: {}, 크기: {}자",
                     job.getSourceUrl(), processedHtml.length());
             return job;
         }*/
@@ -291,7 +291,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
                 JobPosting result = aiExtractionService.extractJobDetailFromHtml(job, processedHtml);
                 dailyApiCallCount.incrementAndGet();
 
-                log.info("AI 상세 추출 성공 - 호출 횟수: {}/{}", dailyApiCallCount.get(), MAX_DAILY_API_CALLS);
+                log.debug("AI 상세 추출 성공 - 호출 횟수: {}/{}", dailyApiCallCount.get(), MAX_DAILY_API_CALLS);
                 return result;
 
             } catch (InterruptedException e) {
@@ -319,7 +319,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
      * 전체 사이트 크롤링 (기존 메소드)
      */
     public CompletableFuture<String> startManualCrawling() {
-        log.info("전체 사이트 크롤링 시작 (토큰 제한 최적화 버전)");
+        log.debug("전체 사이트 크롤링 시작 (토큰 제한 최적화 버전)");
         try {
             return crawlAllSites().thenApply(jobs ->
                     String.format("전체 크롤링 완료: %d개 채용공고 수집 (API 호출: %d/%d, 토큰 제한 최적화 적용)",
@@ -337,7 +337,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
     @Async
     public CompletableFuture<String> startCrawlingBySites(List<String> siteIds) {
         try {
-            log.info("AI 기반 사이트별 크롤링 시작: {} (일일 API 제한: {}, 토큰 최적화 적용)",
+            log.debug("AI 기반 사이트별 크롤링 시작: {} (일일 API 제한: {}, 토큰 최적화 적용)",
                     siteIds, MAX_DAILY_API_CALLS);
 
             List<JobPosting> allJobs = new ArrayList<>();
@@ -345,24 +345,24 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
 
             for (String siteId : siteIds) {
                 if (!SUPPORTED_SITES.containsKey(siteId)) {
-                    log.warn("지원하지 않는 사이트: {}", siteId);
+                    log.debug("지원하지 않는 사이트: {}", siteId);
                     continue;
                 }
 
                 if (!canMakeApiCall()) {
-                    log.warn("일일 API 호출 제한 도달로 {} 크롤링 중단", siteId);
+                    log.debug("일일 API 호출 제한 도달로 {} 크롤링 중단", siteId);
                     break;
                 }
 
                 String siteName = SUPPORTED_SITES.get(siteId);
-                log.info("{}({}) AI 기반 크롤링 시작 (토큰 최적화 적용)", siteName, siteId);
+                log.debug("{}({}) AI 기반 크롤링 시작 (토큰 최적화 적용)", siteName, siteId);
 
                 try {
                     List<JobPosting> siteJobs = crawlSpecificSiteWithAI(siteId);
                     allJobs.addAll(siteJobs);
                     siteResults.put(siteName, siteJobs.size());
 
-                    log.info("{}({}) AI 크롤링 완료: {}개 수집", siteName, siteId, siteJobs.size());
+                    log.debug("{}({}) AI 크롤링 완료: {}개 수집", siteName, siteId, siteJobs.size());
 
                     // 사이트 간 더 긴 간격 (토큰 제한 고려)
                     Thread.sleep(10000); // 10초로 증가
@@ -381,7 +381,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
                     siteResults
             );
 
-            log.info(resultMessage);
+            log.debug(resultMessage);
             return CompletableFuture.completedFuture(resultMessage);
 
         } catch (Exception e) {
@@ -394,22 +394,22 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
 
     private List<JobPosting> callAiExtractionWithImprovedMethod(String html, String siteName) {
         if (!canMakeApiCall()) {
-            log.warn("일일 API 호출 제한 도달: {}/{}", dailyApiCallCount.get(), MAX_DAILY_API_CALLS);
+            log.debug("일일 API 호출 제한 도달: {}/{}", dailyApiCallCount.get(), MAX_DAILY_API_CALLS);
             return new ArrayList<>();
         }
 
         try {
-            log.info("개선된 텍스트 추출 방식 적용 - 사이트: {}, HTML 크기: {}자", siteName, html.length());
+            log.debug("개선된 텍스트 추출 방식 적용 - 사이트: {}, HTML 크기: {}자", siteName, html.length());
 
             // 1단계: 의미있는 텍스트만 추출
             String extractedText = extractMeaningfulJobText(html, siteName);
 
             if (extractedText.isEmpty() || extractedText.length() < 200) {
-                log.warn("추출된 텍스트가 부족함 - 사이트: {}, 텍스트 길이: {}자", siteName, extractedText.length());
+                log.debug("추출된 텍스트가 부족함 - 사이트: {}, 텍스트 길이: {}자", siteName, extractedText.length());
                 return new ArrayList<>();
             }
 
-            log.info("텍스트 추출 완료 - 원본 {}자 → 추출 {}자 (압축률: {:.1f}%)",
+            log.debug("텍스트 추출 완료 - 원본 {}자 → 추출 {}자 (압축률: {:.1f}%)",
                     html.length(), extractedText.length(),
                     (double)(html.length() - extractedText.length()) / html.length() * 100);
 
@@ -424,7 +424,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
                 jobs = processMultipleTextRequests(extractedText, siteName);
             }
 
-            log.info("개선된 방식 AI 추출 완료 - 결과: {}개 채용공고 (API 사용: {}/{})",
+            log.debug("개선된 방식 AI 추출 완료 - 결과: {}개 채용공고 (API 사용: {}/{})",
                     jobs.size(), dailyApiCallCount.get(), MAX_DAILY_API_CALLS);
 
             return jobs;
@@ -453,7 +453,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
             return buildStructuredJobText(jobTexts);
 
         } catch (Exception e) {
-            log.warn("텍스트 추출 중 오류, 폴백 방식 사용 - 사이트: {}", siteName, e);
+            log.debug("텍스트 추출 중 오류, 폴백 방식 사용 - 사이트: {}", siteName, e);
             return extractFallbackText(html);
         }
     }
@@ -511,7 +511,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
             jobTexts = extractJobInfosByKeywords(doc);
         }
 
-        log.info("채용공고 텍스트 추출 완료 - {}개 발견", jobTexts.size());
+        log.debug("채용공고 텍스트 추출 완료 - {}개 발견", jobTexts.size());
         return jobTexts;
     }
 
@@ -532,11 +532,12 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
                     ".h7nnv10"
             };
             case "원티드" -> new String[]{
-                    ".Job_className",
-                    ".job-card",
-                    ".JobCard_className",
-                    "div[class*='job']",
-                    "[data-cy*='job']"
+                    // 가장 안정적이고 추천하는 셀렉터입니다.
+                    "div[class*='JobCard_container']",
+
+                    // 만약을 위한 대체 셀렉터입니다.
+                    ".JobCard_container__zQcZs",
+                    "div[role='listitem']"
             };
             case "프로그래머스" -> new String[]{
                     ".job-card",
@@ -782,7 +783,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
 
             return text;
         } catch (Exception e) {
-            log.warn("폴백 텍스트 추출도 실패", e);
+            log.debug("폴백 텍스트 추출도 실패", e);
             return "";
         }
     }
@@ -794,7 +795,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
         int estimatedTokens = text.length() / ESTIMATED_CHARS_PER_TOKEN;
         boolean withinLimit = estimatedTokens <= SAFE_TOKEN_LIMIT;
 
-        log.info("토큰 제한 확인 - 텍스트: {}자, 예상 토큰: {}, 제한 내: {}",
+        log.debug("토큰 제한 확인 - 텍스트: {}자, 예상 토큰: {}, 제한 내: {}",
                 text.length(), estimatedTokens, withinLimit);
 
         return withinLimit;
@@ -810,12 +811,12 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
             try {
                 Thread.sleep(API_CALL_DELAY);
 
-                log.info("단일 텍스트 API 호출 - 크기: {}자", text.length());
+                log.debug("단일 텍스트 API 호출 - 크기: {}자", text.length());
                 List<JobPosting> jobs = aiExtractionService.extractJobsFromText(text, siteName);
 
                 dailyApiCallCount.incrementAndGet();
 
-                log.info("단일 텍스트 API 호출 성공 - 결과: {}개", jobs.size());
+                log.debug("단일 텍스트 API 호출 성공 - 결과: {}개", jobs.size());
                 return jobs;
 
             } catch (InterruptedException e) {
@@ -838,11 +839,11 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
         List<String> chunks = splitTextIntoSmartChunks(text);
         List<JobPosting> allJobs = new ArrayList<>();
 
-        log.info("텍스트 분할 완료 - {}개 청크로 분할", chunks.size());
+        log.debug("텍스트 분할 완료 - {}개 청크로 분할", chunks.size());
 
         for (int i = 0; i < chunks.size(); i++) {
             if (!canMakeApiCall()) {
-                log.warn("API 호출 제한으로 청크 {}/{} 부터 중단", i + 1, chunks.size());
+                log.debug("API 호출 제한으로 청크 {}/{} 부터 중단", i + 1, chunks.size());
                 break;
             }
 
@@ -863,7 +864,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
             }
         }
 
-        log.info("다중 텍스트 처리 완료 - 총 {}개 추출", allJobs.size());
+        log.debug("다중 텍스트 처리 완료 - 총 {}개 추출", allJobs.size());
         return allJobs;
     }
 
@@ -877,12 +878,12 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
             try {
                 Thread.sleep(API_CALL_DELAY);
 
-                log.info("청크 {}/{} API 호출 - 크기: {}자", chunkNum, totalChunks, chunk.length());
+                log.debug("청크 {}/{} API 호출 - 크기: {}자", chunkNum, totalChunks, chunk.length());
 
                 List<JobPosting> jobs = aiExtractionService.extractJobsFromText(chunk, siteName);
                 dailyApiCallCount.incrementAndGet();
 
-                log.info("청크 {}/{} 완료 - {}개 추출 (API: {}/{})",
+                log.debug("청크 {}/{} 완료 - {}개 추출 (API: {}/{})",
                         chunkNum, totalChunks, jobs.size(),
                         dailyApiCallCount.get(), MAX_DAILY_API_CALLS);
 
@@ -994,21 +995,21 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
             String urlPattern = SITE_URL_PATTERNS.get(siteId);
 
             if (urlPattern == null) {
-                log.warn("URL 패턴이 없는 사이트: {}", siteId);
+                log.debug("URL 패턴이 없는 사이트: {}", siteId);
                 return allJobs;
             }
 
             for (int page = 1; page <= MAX_PAGES_PER_SITE; page++) {
                 if (!canMakeApiCall()) {
-                    log.warn("API 호출 제한으로 {}({}) {}페이지 크롤링 중단", siteName, siteId, page);
+                    log.debug("API 호출 제한으로 {}({}) {}페이지 크롤링 중단", siteName, siteId, page);
                     break;
                 }
 
                 String url = String.format(urlPattern, page);
-                log.info("{}({}) {}페이지 크롤링 시작 (개선된 방식): {}", siteName, siteId, page, url);
+                log.debug("{}({}) {}페이지 크롤링 시작 (개선된 방식): {}", siteName, siteId, page, url);
 
                 if (!loadPage(driver, url, siteName)) {
-                    log.warn("{}({}) {}페이지 로드 실패", siteName, siteId, page);
+                    log.debug("{}({}) {}페이지 로드 실패", siteName, siteId, page);
                     continue;
                 }
 
@@ -1020,18 +1021,18 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
                 }
 
                 String pageHtml = driver.getPageSource();
-                log.info("HTML 획득 완료: {}자, 텍스트 추출 및 분할 처리 시작", pageHtml.length());
+                log.debug("HTML 획득 완료: {}자, 텍스트 추출 및 분할 처리 시작", pageHtml.length());
 
                 // *** 여기가 핵심 변경 부분 ***
                 // 기존: callAiExtractionWithLimits(pageHtml, siteName)
                 // 개선: callAiExtractionWithImprovedMethod(pageHtml, siteName)
                 List<JobPosting> pageJobs = callAiExtractionWithImprovedMethod(pageHtml, siteName);
 
-                log.info("{}({}) {}페이지에서 개선된 방식으로 {}개 채용공고 추출",
+                log.debug("{}({}) {}페이지에서 개선된 방식으로 {}개 채용공고 추출",
                         siteName, siteId, page, pageJobs.size());
 
                 if (pageJobs.isEmpty()) {
-                    log.warn("{}({}) {}페이지에서 채용공고를 찾을 수 없음", siteName, siteId, page);
+                    log.debug("{}({}) {}페이지에서 채용공고를 찾을 수 없음", siteName, siteId, page);
                     break;
                 }
 
@@ -1061,12 +1062,12 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
                 Math.max(1, MAX_DAILY_API_CALLS - dailyApiCallCount.get() - 5)); // 여유분 확보
 
         if (maxDetailJobs <= 0) {
-            log.warn("API 호출 제한으로 상세 정보 수집 건너뜀");
+            log.debug("API 호출 제한으로 상세 정보 수집 건너뜀");
             return;
         }
 
         List<JobPosting> limitedJobs = jobs.subList(0, Math.min(maxDetailJobs, jobs.size()));
-        log.info("상세 정보 수집 대상: {}개 (토큰 제한 고려)", limitedJobs.size());
+        log.debug("상세 정보 수집 대상: {}개 (토큰 제한 고려)", limitedJobs.size());
 
         for (JobPosting job : limitedJobs) {
             if (job.getSourceUrl() == null || job.getSourceUrl().isBlank()) continue;
@@ -1076,18 +1077,18 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
                     // 중복 체크
                     Boolean exists = jobPostingRepository.existsBySourceUrlAndIsActiveTrue(job.getSourceUrl());
                     if (Boolean.TRUE.equals(exists)) {
-                        log.info("상세 스킵(기존 활성): {} - {}", job.getCompany(), job.getTitle());
+                        log.debug("상세 스킵(기존 활성): {} - {}", job.getCompany(), job.getTitle());
                         return null;
                     }
                 } catch (Exception e) {
-                    log.info("기존 여부 확인 실패, 상세 시도 진행: {}", job.getSourceUrl());
+                    log.debug("기존 여부 확인 실패, 상세 시도 진행: {}", job.getSourceUrl());
                 }
 
                 WebDriver localDriver = getDriver();
                 try {
                     crawlJobDetailWithAI(job, localDriver);
                 } catch (Exception e) {
-                    log.warn("AI 기반 상세 크롤링 작업 실패: {} - {}", siteName, job.getSourceUrl(), e);
+                    log.debug("AI 기반 상세 크롤링 작업 실패: {} - {}", siteName, job.getSourceUrl(), e);
                 } finally {
                     closeDriver();
                 }
@@ -1103,9 +1104,9 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
                 try {
                     f.get(120, TimeUnit.SECONDS); // 타임아웃 증가 (토큰 제한으로 응답 시간 증가 고려)
                 } catch (TimeoutException te) {
-                    log.warn("AI 기반 상세 크롤링 타임아웃");
+                    log.debug("AI 기반 상세 크롤링 타임아웃");
                 } catch (ExecutionException ee) {
-                    log.warn("AI 기반 상세 크롤링 태스크 예외", ee.getCause());
+                    log.debug("AI 기반 상세 크롤링 태스크 예외", ee.getCause());
                 }
             }
         } catch (InterruptedException ie) {
@@ -1120,7 +1121,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
     private void crawlJobDetailWithAI(JobPosting job, WebDriver driver) {
         if (job.getSourceUrl() == null || !canMakeApiCall()) {
             if (!canMakeApiCall()) {
-                log.info("API 호출 제한으로 상세 크롤링 스킵: {}", job.getSourceUrl());
+                log.debug("API 호출 제한으로 상세 크롤링 스킵: {}", job.getSourceUrl());
             }
             return;
         }
@@ -1128,10 +1129,10 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
         String originalUrl = driver.getCurrentUrl();
 
         try {
-            log.info("AI 기반 상세 페이지 크롤링 (토큰 최적화): {}", job.getSourceUrl());
+            log.debug("AI 기반 상세 페이지 크롤링 (토큰 최적화): {}", job.getSourceUrl());
 
             if (!loadPage(driver, job.getSourceUrl(), job.getSourceSite())) {
-                log.warn("상세 페이지 로드 실패: {}", job.getSourceUrl());
+                log.debug("상세 페이지 로드 실패: {}", job.getSourceUrl());
                 return;
             }
 
@@ -1144,7 +1145,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
             }
 
             String pageSource = driver.getPageSource();
-            log.info("상세 페이지 소스 크기: {}자, 토큰 제한 적합성 확인 중...", pageSource.length());
+            log.debug("상세 페이지 소스 크기: {}자, 토큰 제한 적합성 확인 중...", pageSource.length());
 
             // AI를 사용하여 상세 정보 추출 (토큰 제한 적용)
             JobPosting updatedJob = callAiDetailExtractionWithLimits(job, pageSource);
@@ -1153,14 +1154,14 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
             saveIndividualJob(updatedJob);
 
         } catch (Exception e) {
-            log.warn("AI 기반 상세 정보 크롤링 실패: {}, error: {}", job.getSourceUrl(), e.getMessage());
+            log.debug("AI 기반 상세 정보 크롤링 실패: {}, error: {}", job.getSourceUrl(), e.getMessage());
         } finally {
             try {
                 if (!originalUrl.equals(driver.getCurrentUrl())) {
                     driver.navigate().back();
                 }
             } catch (Exception e) {
-                log.info("원래 페이지로 돌아가기 실패", e);
+                log.debug("원래 페이지로 돌아가기 실패", e);
             }
         }
     }
@@ -1179,19 +1180,19 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
         List<JobPosting> allJobs = new ArrayList<>();
 
         try {
-            log.info("전체 사이트 AI 크롤링 시작 - API 제한: {}, 토큰 최적화 적용", MAX_DAILY_API_CALLS);
+            log.debug("전체 사이트 AI 크롤링 시작 - API 제한: {}, 토큰 최적화 적용", MAX_DAILY_API_CALLS);
 
             // 모든 지원 사이트 크롤링
             for (Map.Entry<String, String> site : SUPPORTED_SITES.entrySet()) {
                 if (!canMakeApiCall()) {
-                    log.warn("일일 API 호출 제한으로 {}({}) 크롤링 중단", site.getValue(), site.getKey());
+                    log.debug("일일 API 호출 제한으로 {}({}) 크롤링 중단", site.getValue(), site.getKey());
                     break;
                 }
 
                 try {
                     List<JobPosting> siteJobs = crawlSpecificSiteWithAI(site.getKey());
                     allJobs.addAll(siteJobs);
-                    log.info("{} AI 크롤링 완료: {}개 (API 호출: {}/{}, 토큰 최적화 적용)",
+                    log.debug("{} AI 크롤링 완료: {}개 (API 호출: {}/{}, 토큰 최적화 적용)",
                             site.getValue(), siteJobs.size(), dailyApiCallCount.get(), MAX_DAILY_API_CALLS);
 
                     // 사이트 간 더 긴 간격 (토큰 제한 고려)
@@ -1202,7 +1203,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
                 }
             }
 
-            log.info("전체 AI 크롤링 완료. 총 {}개 채용공고 수집 (API 호출: {}/{}, 토큰 최적화 적용)",
+            log.debug("전체 AI 크롤링 완료. 총 {}개 채용공고 수집 (API 호출: {}/{}, 토큰 최적화 적용)",
                     allJobs.size(), dailyApiCallCount.get(), MAX_DAILY_API_CALLS);
 
         } catch (Exception e) {
@@ -1236,7 +1237,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
             try {
                 driver.quit();
             } catch (Exception e) {
-                log.warn("WebDriver 종료 중 오류", e);
+                log.debug("WebDriver 종료 중 오류", e);
             } finally {
                 driverThreadLocal.remove();
                 waitThreadLocal.remove();
@@ -1306,7 +1307,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
             JavascriptExecutor js = (JavascriptExecutor) driver;
             js.executeScript("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})");
 
-            log.info("WebDriver 생성 성공 (토큰 최적화 설정 적용)");
+            log.debug("WebDriver 생성 성공 (토큰 최적화 설정 적용)");
             return driver;
 
         } catch (Exception e) {
@@ -1318,18 +1319,18 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
     private boolean loadPage(WebDriver driver, String url, String siteName) {
         for (int retry = 0; retry < MAX_RETRIES; retry++) {
             try {
-                log.info("{} 페이지 로드 시도 {}: {}", siteName, retry + 1, url);
+                log.debug("{} 페이지 로드 시도 {}: {}", siteName, retry + 1, url);
                 driver.get(url);
 
                 WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
                 wait.until(webDriver -> ((JavascriptExecutor) webDriver)
                         .executeScript("return document.readyState").equals("complete"));
 
-                log.info("{} 페이지 로드 성공: {}", siteName, url);
+                log.debug("{} 페이지 로드 성공: {}", siteName, url);
                 return true;
 
             } catch (Exception e) {
-                log.warn("{} 페이지 로드 실패 (시도 {}/{}): {} - {}",
+                log.debug("{} 페이지 로드 실패 (시도 {}/{}): {} - {}",
                         siteName, retry + 1, MAX_RETRIES, url, e.getMessage());
 
                 if (retry < MAX_RETRIES - 1) {
@@ -1352,7 +1353,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void saveIndividualJob(JobPosting job) {
         if (!isValidJob(job)) {
-            log.warn("필수 필드 누락된 채용공고 스킵: {} - {}", job.getCompany(), job.getTitle());
+            log.debug("필수 필드 누락된 채용공고 스킵: {} - {}", job.getCompany(), job.getTitle());
             return;
         }
 
@@ -1371,13 +1372,13 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
                     jobPostingRepository.updateEmbedding(saved.getId(), embeddingText);
                 }
             } catch (Exception embeddingError) {
-                log.warn("임베딩 생성 실패, null로 설정: {} - {}", saved.getCompany(), saved.getTitle(), embeddingError);
+                log.debug("임베딩 생성 실패, null로 설정: {} - {}", saved.getCompany(), saved.getTitle(), embeddingError);
                 saved.setEmbedding(null);
             }
 
-            log.info("새 채용공고 저장: {} - {}", saved.getCompany(), saved.getTitle());
+            log.debug("새 채용공고 저장: {} - {}", saved.getCompany(), saved.getTitle());
         } else {
-            log.info("중복 채용공고 스킵: {} - {}", job.getCompany(), job.getTitle());
+            log.debug("중복 채용공고 스킵: {} - {}", job.getCompany(), job.getTitle());
         }
     }
 
@@ -1534,7 +1535,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
     public void resetApiCallCounter() {
         dailyApiCallCount.set(0);
         lastResetDate = LocalDateTime.now().toLocalDate().atStartOfDay();
-        log.info("API 호출 카운터가 수동으로 리셋되었습니다. (토큰 최적화 버전)");
+        log.debug("API 호출 카운터가 수동으로 리셋되었습니다. (토큰 최적화 버전)");
     }
 
     // ===== 스케줄링 작업들 =====
@@ -1542,7 +1543,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
     @Scheduled(cron = "0 0 0 * * *") // 매일 자정
     public void resetDailyApiCounter() {
         checkAndResetDailyCounter();
-        log.info("일일 API 호출 카운터 자동 리셋 완료 (토큰 최적화 버전)");
+        log.debug("일일 API 호출 카운터 자동 리셋 완료 (토큰 최적화 버전)");
     }
 
     @Scheduled(cron = "0 0 2 * * SUN")
@@ -1551,7 +1552,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
         try {
             LocalDateTime cutoffDate = LocalDateTime.now().minusDays(30);
             int deleted = jobPostingRepository.deleteByCreatedAtBefore(cutoffDate);
-            log.info("30일 이전 채용공고 {}개 삭제", deleted);
+            log.debug("30일 이전 채용공고 {}개 삭제", deleted);
         } catch (Exception e) {
             log.error("오래된 채용공고 정리 실패", e);
         }
@@ -1563,7 +1564,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
         try {
             LocalDateTime now = LocalDateTime.now();
             int updated = jobPostingRepository.deactivateExpiredJobs(now);
-            log.info("마감된 채용공고 {}개 비활성화", updated);
+            log.debug("마감된 채용공고 {}개 비활성화", updated);
         } catch (Exception e) {
             log.error("마감된 채용공고 비활성화 실패", e);
         }
@@ -1572,7 +1573,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
     // ===== 테스트/디버깅 메서드들 (토큰 최적화) =====
 
     public void testAiExtraction(String url, String siteName) {
-        log.info("AI 추출 테스트 시작 (토큰 최적화): {} (API 호출 가능: {})", url, canMakeApiCall());
+        log.debug("AI 추출 테스트 시작 (토큰 최적화): {} (API 호출 가능: {})", url, canMakeApiCall());
 
         if (!canMakeApiCall()) {
             log.error("API 호출 제한으로 테스트를 수행할 수 없습니다. 사용량: {}/{}",
@@ -1583,20 +1584,20 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
         WebDriver driver = getDriver();
         try {
             if (loadPage(driver, url, siteName)) {
-                log.info("페이지 로드 성공");
+                log.debug("페이지 로드 성공");
 
                 String html = driver.getPageSource();
-                log.info("HTML 크기: {}자, 토큰 제한 적합성: {}", html.length(), isHtmlSuitableForAI(html));
+                log.debug("HTML 크기: {}자, 토큰 제한 적합성: {}", html.length(), isHtmlSuitableForAI(html));
 
                 // 토큰 제한 고려한 AI 추출
                 List<JobPosting> jobs = callAiExtractionWithLimits(html, siteName);
 
-                log.info("AI 추출 결과 (토큰 최적화): {}개 채용공고 (API 호출: {}/{})",
+                log.debug("AI 추출 결과 (토큰 최적화): {}개 채용공고 (API 호출: {}/{})",
                         jobs.size(), dailyApiCallCount.get(), MAX_DAILY_API_CALLS);
 
                 for (int i = 0; i < Math.min(3, jobs.size()); i++) {
                     JobPosting job = jobs.get(i);
-                    log.info("채용공고 {}: {} - {} ({})", i+1, job.getCompany(), job.getTitle(), job.getSourceUrl());
+                    log.debug("채용공고 {}: {} - {} ({})", i+1, job.getCompany(), job.getTitle(), job.getSourceUrl());
                 }
             } else {
                 log.error("페이지 로드 실패");
@@ -1658,9 +1659,9 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
      */
     public void updateTokenLimitSettings(int maxHtmlSize, int safeTokenLimit, long apiDelay) {
         // 주의: 이 메서드는 상수를 직접 변경할 수 없으므로 로깅만 수행
-        log.info("토큰 제한 설정 업데이트 요청 - HTML 크기: {}, 토큰 제한: {}, API 지연: {}ms",
+        log.debug("토큰 제한 설정 업데이트 요청 - HTML 크기: {}, 토큰 제한: {}, API 지연: {}ms",
                 maxHtmlSize, safeTokenLimit, apiDelay);
-        log.warn("현재 설정은 상수로 정의되어 런타임 변경이 불가능합니다. 코드를 수정해주세요.");
+        log.debug("현재 설정은 상수로 정의되어 런타임 변경이 불가능합니다. 코드를 수정해주세요.");
     }
 
     // JobTextInfo 내부 클래스
