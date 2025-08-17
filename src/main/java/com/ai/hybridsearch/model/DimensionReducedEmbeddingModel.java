@@ -53,7 +53,7 @@ public class DimensionReducedEmbeddingModel implements EmbeddingModel {
 
     @Override
     public Response<List<Embedding>> embedAll(List<TextSegment> textSegments) {
-        log.debug("임베딩 생성 시작 - 텍스트 개수: {}", textSegments.size());
+        log.info("임베딩 생성 시작 - 텍스트 개수: {}", textSegments.size());
 
         Response<List<Embedding>> response = baseModel.embedAll(textSegments);
 
@@ -61,7 +61,7 @@ public class DimensionReducedEmbeddingModel implements EmbeddingModel {
                 .map(this::reduceEmbedding)
                 .collect(Collectors.toList());
 
-        log.debug("차원 축소 완료 - 결과 개수: {}", reducedEmbeddings.size());
+        log.info("차원 축소 완료 - 결과 개수: {}", reducedEmbeddings.size());
 
         return Response.from(reducedEmbeddings, response.tokenUsage(), response.finishReason());
     }
@@ -86,7 +86,7 @@ public class DimensionReducedEmbeddingModel implements EmbeddingModel {
         float[] originalVector = original.vector();
 
         if (originalVector.length <= targetDimensions) {
-            log.debug("원본 차원({})이 목표 차원({})보다 작거나 같음, 그대로 반환",
+            log.info("원본 차원({})이 목표 차원({})보다 작거나 같음, 그대로 반환",
                     originalVector.length, targetDimensions);
             return original;
         }
@@ -96,7 +96,7 @@ public class DimensionReducedEmbeddingModel implements EmbeddingModel {
         // 벡터 정규화
         normalizeVector(reducedVector);
 
-        log.debug("차원 축소 완료: {} -> {}", originalVector.length, reducedVector.length);
+        log.info("차원 축소 완료: {} -> {}", originalVector.length, reducedVector.length);
 
         return Embedding.from(reducedVector);
     }
@@ -186,7 +186,7 @@ public class DimensionReducedEmbeddingModel implements EmbeddingModel {
             synchronized (trainingData) {
                 if (trainingData.size() < PCA_TRAINING_SIZE) {
                     trainingData.add(originalVector.clone());
-                    log.debug("PCA 학습 데이터 수집 중: {}/{}", trainingData.size(), PCA_TRAINING_SIZE);
+                    log.info("PCA 학습 데이터 수집 중: {}/{}", trainingData.size(), PCA_TRAINING_SIZE);
                 }
 
                 if (trainingData.size() >= PCA_TRAINING_SIZE && !pcaInitialized.get()) {

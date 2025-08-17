@@ -7,7 +7,6 @@ import com.ai.hybridsearch.service.AiExtractionService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.model.chat.ChatLanguageModel;
-import dev.langchain4j.model.googleai.GoogleAiGeminiChatModel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
@@ -23,13 +22,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Gemini 기반 채용공고 추출 서비스
+ * Anthropic Claude 기반 채용공고 추출 서비스
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@ConditionalOnProperty(value = "langchain.model-type", havingValue = "gemini")
-public class GeminiExtractionServiceImpl implements AiExtractionService {
+@ConditionalOnProperty(value = "langchain.model-type", havingValue = "anthropic")
+public class AnthropicExtractionServiceImpl implements AiExtractionService {
 
     private final AiModelConfig aiModelConfig;
     private final AiCrawlingConfig crawlingConfig;
@@ -40,8 +39,8 @@ public class GeminiExtractionServiceImpl implements AiExtractionService {
 
     // 재시도 설정
     private static final int MAX_RETRY_ATTEMPTS = 3;
-    private static final long DEFAULT_RETRY_DELAY_MS = 30000;
-    private static final long MAX_RETRY_DELAY_MS = 300000;
+    private static final long DEFAULT_RETRY_DELAY_MS = 20000; // Claude는 상대적으로 빠른 복구
+    private static final long MAX_RETRY_DELAY_MS = 180000; // 3분
 
     // HTML 정리를 위한 패턴들
     private static final Pattern SCRIPT_PATTERN = Pattern.compile("<script[^>]*>.*?</script>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
@@ -52,43 +51,43 @@ public class GeminiExtractionServiceImpl implements AiExtractionService {
     @PostConstruct
     public void init() {
         try {
-            log.info("=== Gemini 추출 서비스 초기화 시작 ===");
+            log.info("=== Anthropic Claude 추출 서비스 초기화 시작 ===");
 
-            validateGeminiConfig();
+            validateAnthropicConfig();
 
-            // 기본 채팅 모델 초기화 (목록 추출용)
-            chatModel = GoogleAiGeminiChatModel.builder()
-                    .apiKey(aiModelConfig.getGemini().getApiKey())
-                    .modelName(getModelName())
-                    .temperature(crawlingConfig.getSiteSpecific().getDefaultTemperature())
-                    .maxOutputTokens(getOutputMaxTokens())
-                    .timeout(Duration.ofSeconds(crawlingConfig.getAiResponseTimeoutSeconds()))
-                    .build();
+//            // 기본 채팅 모델 초기화 (목록 추출용)
+//            chatModel = AnthropicChatModel.builder()
+//                    .apiKey(aiModelConfig.getAnthropic().getApiKey())
+//                    .modelName(getModelName())
+//                    .temperature(crawlingConfig.getSiteSpecific().getDefaultTemperature())
+//                    .maxTokens(getOutputMaxTokens())
+//                    .timeout(Duration.ofSeconds(crawlingConfig.getAiResponseTimeoutSeconds()))
+//                    .build();
+//
+//            // 상세 추출용 모델 (더 정확하고 일관성 있게)
+//            detailChatModel = AnthropicChatModel.builder()
+//                    .apiKey(aiModelConfig.getAnthropic().getApiKey())
+//                    .modelName(getModelName())
+//                    .temperature(crawlingConfig.getSiteSpecific().getDetailExtractionTemperature())
+//                    .maxTokens(2000)
+//                    .timeout(Duration.ofSeconds(crawlingConfig.getAiResponseTimeoutSeconds()))
+//                    .build();
 
-            // 상세 추출용 모델
-            detailChatModel = GoogleAiGeminiChatModel.builder()
-                    .apiKey(aiModelConfig.getGemini().getApiKey())
-                    .modelName(getModelName())
-                    .temperature(crawlingConfig.getSiteSpecific().getDetailExtractionTemperature())
-                    .maxOutputTokens(2000)
-                    .timeout(Duration.ofSeconds(crawlingConfig.getAiResponseTimeoutSeconds()))
-                    .build();
-
-            log.info("Gemini 모델 초기화 완료 - Model: {}", getModelName());
+            log.info("Anthropic Claude 모델 초기화 완료 - Model: {}", getModelName());
 
         } catch (Exception e) {
-            log.error("Gemini 추출 서비스 초기화 실패", e);
-            throw new RuntimeException("Gemini 추출 서비스 초기화 실패", e);
+            log.error("Anthropic Claude 추출 서비스 초기화 실패", e);
+            throw new RuntimeException("Anthropic Claude 추출 서비스 초기화 실패", e);
         }
     }
 
     @Override
     public List<JobPosting> extractJobsFromHtml(String html, String siteName) {
         try {
-            log.info("Gemini를 이용한 채용공고 추출 시작 - 사이트: {}", siteName);
+            log.info("Anthropic Claude를 이용한 채용공고 추출 시작 - 사이트: {}", siteName);
 
             if (!isModelAvailable()) {
-                log.warn("Gemini 모델을 사용할 수 없음");
+                log.warn("Anthropic Claude 모델을 사용할 수 없음");
                 return new ArrayList<>();
             }
 
@@ -99,17 +98,17 @@ public class GeminiExtractionServiceImpl implements AiExtractionService {
             String prompt = createJobListExtractionPrompt(cleanedHtml, siteName);
             String response = generateChatResponseWithRetry(prompt, chatModel);
 
-            log.info("Gemini API 응답 받음 - 길이: {}", response.length());
+            log.info("Anthropic Claude API 응답 받음 - 길이: {}", response.length());
 
             // AI 응답 파싱
             List<JobPosting> jobs = parseJobListResponse(response, siteName);
 
-            log.info("Gemini 추출 완료 - {}개 채용공고 추출 (신뢰도: {:.2f})",
+            log.info("Anthropic Claude 추출 완료 - {}개 채용공고 추출 (신뢰도: {:.2f})",
                     jobs.size(), getExtractionConfidence(html, siteName));
             return jobs;
 
         } catch (Exception e) {
-            log.error("Gemini를 이용한 채용공고 추출 실패 - 사이트: {}", siteName, e);
+            log.error("Anthropic Claude를 이용한 채용공고 추출 실패 - 사이트: {}", siteName, e);
 
             if (crawlingConfig.isEnableFallback()) {
                 log.info("폴백 모드로 전환하여 기본 추출 시도");
@@ -123,10 +122,10 @@ public class GeminiExtractionServiceImpl implements AiExtractionService {
     @Override
     public JobPosting extractJobDetailFromHtml(JobPosting baseJob, String detailHtml) {
         try {
-            log.info("Gemini를 이용한 채용공고 상세정보 추출 시작 - {}", baseJob.getTitle());
+            log.info("Anthropic Claude를 이용한 채용공고 상세정보 추출 시작 - {}", baseJob.getTitle());
 
             if (!isModelAvailable()) {
-                log.warn("Gemini 모델을 사용할 수 없음, 원본 반환");
+                log.warn("Anthropic Claude 모델을 사용할 수 없음, 원본 반환");
                 return baseJob;
             }
 
@@ -151,7 +150,7 @@ public class GeminiExtractionServiceImpl implements AiExtractionService {
 
     @Override
     public String getModelType() {
-        return "gemini";
+        return "anthropic";
     }
 
     @Override
@@ -166,7 +165,7 @@ public class GeminiExtractionServiceImpl implements AiExtractionService {
             return testResponse != null && !testResponse.trim().isEmpty();
 
         } catch (Exception e) {
-            log.warn("Gemini 모델 상태 확인 실패", e);
+            log.warn("Anthropic Claude 모델 상태 확인 실패", e);
             return false;
         }
     }
@@ -174,38 +173,38 @@ public class GeminiExtractionServiceImpl implements AiExtractionService {
     @Override
     public double getExtractionConfidence(String html, String siteName) {
         try {
-            // Gemini는 일반적으로 높은 신뢰도를 가짐
+            // Claude는 매우 높은 품질의 텍스트 이해 능력을 가짐
             double htmlQuality = calculateHtmlQuality(html);
             double siteWeight = getSiteConfidenceWeight(siteName);
-            double modelWeight = 0.88; // Gemini의 신뢰도
+            double modelWeight = 0.98; // Claude의 최고 수준 신뢰도
 
             double confidence = htmlQuality * siteWeight * modelWeight;
             return Math.max(0.0, Math.min(1.0, confidence));
 
         } catch (Exception e) {
             log.info("신뢰도 계산 실패", e);
-            return 0.85; // Gemini 기본 신뢰도
+            return 0.95; // Claude 기본 신뢰도
         }
     }
 
     // ===== 내부 헬퍼 메서드들 =====
 
-    private void validateGeminiConfig() {
-        if (aiModelConfig.getGemini() == null ||
-                aiModelConfig.getGemini().getApiKey() == null ||
-                aiModelConfig.getGemini().getApiKey().isBlank()) {
-            throw new IllegalStateException("Gemini API Key가 설정되지 않았습니다.");
+    private void validateAnthropicConfig() {
+        if (aiModelConfig.getAnthropic() == null ||
+                aiModelConfig.getAnthropic().getApiKey() == null ||
+                aiModelConfig.getAnthropic().getApiKey().isBlank()) {
+            throw new IllegalStateException("Anthropic API Key가 설정되지 않았습니다.");
         }
-        log.info("Gemini API Key 검증 완료");
+        log.info("Anthropic API Key 검증 완료");
     }
 
     private String getModelName() {
-        String configuredModel = aiModelConfig.getGemini().getAiChatModel();
-        return configuredModel != null ? configuredModel : "gemini-1.5-flash";
+        String configuredModel = aiModelConfig.getAnthropic().getAiChatModel();
+        return configuredModel != null ? configuredModel : "claude-3-sonnet-20240229";
     }
 
     private Integer getOutputMaxTokens() {
-        String maxTokens = aiModelConfig.getGemini().getOutputMaxToken();
+        String maxTokens = aiModelConfig.getAnthropic().getOutputMaxToken();
         return maxTokens != null ? Integer.parseInt(maxTokens) : 4000;
     }
 
@@ -219,17 +218,17 @@ public class GeminiExtractionServiceImpl implements AiExtractionService {
         while (attempt < MAX_RETRY_ATTEMPTS) {
             try {
                 attempt++;
-                log.info("Gemini 모델 호출 시도 {}/{}", attempt, MAX_RETRY_ATTEMPTS);
+                log.info("Anthropic Claude 모델 호출 시도 {}/{}", attempt, MAX_RETRY_ATTEMPTS);
 
                 long startTime = System.currentTimeMillis();
                 String response = model.generate(prompt);
                 long endTime = System.currentTimeMillis();
 
-                log.info("Gemini API 응답 성공 - 시도: {}, 응답시간: {}ms", attempt, (endTime - startTime));
+                log.info("Anthropic Claude API 응답 성공 - 시도: {}, 응답시간: {}ms", attempt, (endTime - startTime));
                 return response;
 
             } catch (Exception e) {
-                log.warn("Gemini 모델 호출 실패 - 시도: {}/{}, 오류: {}",
+                log.warn("Anthropic Claude 모델 호출 실패 - 시도: {}/{}, 오류: {}",
                         attempt, MAX_RETRY_ATTEMPTS, e.getMessage());
 
                 // Rate limit 오류인지 확인하고 재시도 처리
@@ -244,22 +243,22 @@ public class GeminiExtractionServiceImpl implements AiExtractionService {
                         Thread.sleep(currentDelay);
                     } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
-                        throw new RuntimeException("Gemini 모델 호출이 중단되었습니다.", ie);
+                        throw new RuntimeException("Anthropic Claude 모델 호출이 중단되었습니다.", ie);
                     }
 
-                    currentDelay = Math.min((long) (currentDelay * 1.5), MAX_RETRY_DELAY_MS);
+                    currentDelay = Math.min((long) (currentDelay * 1.2), MAX_RETRY_DELAY_MS);
 
                 } else if (attempt >= MAX_RETRY_ATTEMPTS) {
                     log.error("최대 재시도 횟수 도달");
-                    throw new RuntimeException("Gemini 모델 응답 생성에 실패했습니다. 최대 재시도 횟수를 초과했습니다.", e);
+                    throw new RuntimeException("Anthropic Claude 모델 응답 생성에 실패했습니다. 최대 재시도 횟수를 초과했습니다.", e);
                 } else {
                     log.error("비 Rate limit 오류 발생");
-                    throw new RuntimeException("Gemini 모델 응답 생성에 실패했습니다.", e);
+                    throw new RuntimeException("Anthropic Claude 모델 응답 생성에 실패했습니다.", e);
                 }
             }
         }
 
-        throw new RuntimeException("Gemini 모델 응답 생성에 실패했습니다. 모든 재시도가 실패했습니다.");
+        throw new RuntimeException("Anthropic Claude 모델 응답 생성에 실패했습니다. 모든 재시도가 실패했습니다.");
     }
 
     private boolean isRateLimitError(Exception e) {
@@ -312,7 +311,7 @@ public class GeminiExtractionServiceImpl implements AiExtractionService {
             doc.select("[style*='display:none'], [style*='visibility:hidden']").remove();
             doc.select(".ads, .advertisement, .banner, .popup").remove();
 
-            // Gemini 토큰 제한에 맞춰 길이 조정
+            // Claude 토큰 제한에 맞춰 길이 조정 (Claude는 매우 큰 컨텍스트 윈도우)
             String result = doc.html();
             int maxLength = getInputMaxTokens() * 4; // 대략적인 토큰-문자 비율
             if (result.length() > maxLength) {
@@ -329,81 +328,80 @@ public class GeminiExtractionServiceImpl implements AiExtractionService {
     }
 
     private int getInputMaxTokens() {
-        String maxTokens = aiModelConfig.getGemini().getInputMaxToken();
-        return maxTokens != null ? Integer.parseInt(maxTokens) : 30000; // Gemini 기본 토큰 제한
+        String maxTokens = aiModelConfig.getAnthropic().getInputMaxToken();
+        return maxTokens != null ? Integer.parseInt(maxTokens) : 100000; // Claude의 큰 컨텍스트 윈도우
     }
 
     private String createJobListExtractionPrompt(String html, String siteName) {
         return String.format("""
-            You are an expert web scraper specialized in extracting job posting information. 
-            Extract job posting information accurately from the following HTML content from %s job listing page.
+            I'm a hiring data extraction specialist. Please analyze the following HTML content from %s job listing page and extract job posting information with high accuracy.
             
-            Required information to extract:
+            Please extract the following information for each job posting:
             - title: Job title (required)
-            - company: Company name (required)  
-            - location: Work location (city/region level only, e.g., Seoul, Gyeonggi-do)
-            - salary: Salary/compensation information
-            - employmentType: Employment type (full-time, contract, intern, freelance, etc.)
-            - experienceLevel: Experience requirement (entry-level, experienced, no experience required, etc.)
-            - sourceUrl: Job posting detail page link (must be complete URL)
+            - company: Company name (required)
+            - location: Work location (city/district level preferred)
+            - salary: Salary/compensation information  
+            - employmentType: Employment type (정규직, 계약직, 인턴, 프리랜서 등)
+            - experienceLevel: Experience requirement (신입, 경력, 경력무관, etc.)
+            - sourceUrl: Complete URL to job detail page
             
-            Important rules:
-            1. Respond ONLY in valid JSON array format
-            2. Do not include any other text or explanations
-            3. sourceUrl must be a complete URL (starting with http:// or https://)
+            Critical requirements:
+            1. Return ONLY a valid JSON array format
+            2. No additional text, explanations, or markdown formatting
+            3. sourceUrl must be complete URLs (http:// or https://)
             4. Use null for missing information
-            5. Exclude advertisements, banners, or irrelevant content
-            6. Both title and company are mandatory fields
+            5. Filter out advertisements and irrelevant content
+            6. Both title and company are mandatory
             
-            Response example:
+            Expected JSON format:
             [
                 {
-                    "title": "Backend Developer",
-                    "company": "ABC Tech",
-                    "location": "Seoul",
-                    "salary": "Annual 30-50 million KRW",
-                    "employmentType": "Full-time",
-                    "experienceLevel": "3+ years experience",
+                    "title": "백엔드 개발자",
+                    "company": "테크회사",
+                    "location": "서울 강남구",
+                    "salary": "연봉 3000-5000만원",
+                    "employmentType": "정규직",
+                    "experienceLevel": "경력 3년 이상",
                     "sourceUrl": "https://example.com/job/123"
                 }
             ]
             
-            HTML content:
+            HTML content to analyze:
             %s
             """, siteName, html);
     }
 
     private String createJobDetailExtractionPrompt(String html, JobPosting baseJob) {
         return String.format("""
-            You are a job posting analysis expert. The following HTML is the job detail page for "%s" position at "%s" company.
-            Extract detailed information accurately from this page.
+            I'm analyzing a detailed job posting page for "%s" position at "%s" company. 
+            Please extract comprehensive job details from the HTML content below with high precision.
             
-            Information to extract:
-            - description: Main job responsibilities and role description
-            - requirements: Qualifications, required skills, preferred qualifications
-            - benefits: Employee benefits, perks, working conditions
-            - salary: Salary information (only if more detailed than existing)
-            - location: Work location (only if more detailed than existing)
-            - deadline: Application deadline (YYYY-MM-DD format)
+            Extract these specific details:
+            - description: Detailed job responsibilities and role description
+            - requirements: Required qualifications, skills, experience, and preferred qualifications
+            - benefits: Employee benefits, perks, working conditions, company culture
+            - salary: Salary details (only if more specific than existing data)
+            - location: Detailed work location (only if more specific than existing data)  
+            - deadline: Application deadline in YYYY-MM-DD format
             
-            Important rules:
-            1. Respond ONLY in valid JSON object format
-            2. Do not include any other text or explanations
+            Critical requirements:
+            1. Return ONLY a valid JSON object format
+            2. No additional text, explanations, or markdown formatting
             3. Use null for missing information
-            4. deadline must be in exact date format (YYYY-MM-DD)
-            5. Organize all text content in Korean
+            4. deadline must be exact YYYY-MM-DD format
+            5. Provide content in Korean for Korean job postings
             
-            Response example:
+            Expected JSON format:
             {
-                "description": "Develop backend APIs using Spring Boot and design databases.",
-                "requirements": "3+ years Java, Spring Boot experience required, AWS cloud experience preferred",
-                "benefits": "Full insurance coverage, 15 vacation days, education allowance, overtime pay",
-                "salary": "Annual 45 million KRW negotiable",
-                "location": "Seoul Gangnam-gu Teheran-ro 123-gil",
+                "description": "Spring Boot 기반 백엔드 API 개발 및 데이터베이스 설계 업무",
+                "requirements": "Java, Spring Boot 3년 이상 경험 필수, AWS 경험 우대",
+                "benefits": "4대보험, 연차 15일, 교육비 지원, 유연근무제",
+                "salary": "연봉 4500만원 협의가능",
+                "location": "서울특별시 강남구 테헤란로 123번길",
                 "deadline": "2024-12-31"
             }
             
-            HTML content:
+            HTML content to analyze:
             %s
             """, baseJob.getTitle(), baseJob.getCompany(), html);
     }
@@ -416,7 +414,7 @@ public class GeminiExtractionServiceImpl implements AiExtractionService {
             JsonNode jsonArray = objectMapper.readTree(jsonStr);
 
             if (!jsonArray.isArray()) {
-                log.warn("Gemini 응답이 배열이 아닙니다: {}", jsonStr);
+                log.warn("Anthropic Claude 응답이 배열이 아닙니다: {}", jsonStr);
                 return jobs;
             }
 
@@ -432,7 +430,7 @@ public class GeminiExtractionServiceImpl implements AiExtractionService {
             }
 
         } catch (Exception e) {
-            log.error("Gemini 응답 파싱 실패", e);
+            log.error("Anthropic Claude 응답 파싱 실패", e);
         }
 
         return jobs;
@@ -473,7 +471,7 @@ public class GeminiExtractionServiceImpl implements AiExtractionService {
             parseAndSetDeadline(job, getTextValue(jsonNode, "deadline"));
 
         } catch (Exception e) {
-            log.error("Gemini 상세정보 응답 파싱 실패", e);
+            log.error("Anthropic Claude 상세정보 응답 파싱 실패", e);
         }
     }
 
@@ -599,7 +597,7 @@ public class GeminiExtractionServiceImpl implements AiExtractionService {
     }
 
     private List<JobPosting> fallbackExtraction(String html, String siteName) {
-        log.info("Gemini 폴백 모드로 기본 추출 시도 - 사이트: {}", siteName);
+        log.info("Anthropic Claude 폴백 모드로 기본 추출 시도 - 사이트: {}", siteName);
 
         List<JobPosting> fallbackJobs = new ArrayList<>();
 
@@ -631,10 +629,10 @@ public class GeminiExtractionServiceImpl implements AiExtractionService {
             }
 
         } catch (Exception e) {
-            log.warn("Gemini 폴백 추출도 실패", e);
+            log.warn("Anthropic Claude 폴백 추출도 실패", e);
         }
 
-        log.info("Gemini 폴백 추출 완료: {}개", fallbackJobs.size());
+        log.info("Anthropic Claude 폴백 추출 완료: {}개", fallbackJobs.size());
         return fallbackJobs;
     }
 

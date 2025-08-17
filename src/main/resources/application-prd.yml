@@ -20,14 +20,32 @@ logging:
 langchain:
   model-type: ${MODEL_TYPE}
   target-dimensions: ${TARGET_DIMENSIONS}
+
+  # OpenAI 설정
   openai:
     api-key: ${OPENAI_API_KEY}
-    embeddingModel: text-embedding-3-small
-    aiChatModel: gemini-1.5-flash     # 또는 gemini-1.5-pro
+    embedding-model: text-embedding-3-small  # 임베딩용
+    ai-chat-model: gpt-4                     # AI 추출용
+    output-max-token: "4000"
+    input-max-token: "8000"
+
+  # Google Gemini 설정
   gemini:
     api-key: ${GEMINI_API_KEY}
     embeddingModel: embedding-001
-    aiChatModel: gemini-1.5-flash     # 또는 gemini-1.5-pro
+    aiChatModel: gemini-1.5-flash    # 또는 gemini-1.5-pro
+    inputMaxToken: 1048576    # 약 100만 토큰 (최대)
+    outputMaxToken: 8192      # 최대 출력
+
+  # Anthropic Claude 설정 (AI 추출 전용)
+  anthropic:
+    api-key: ${ANTHROPIC_API_KEY}
+    ai-chat-model: claude-3-sonnet-20240229
+    output-max-token: "4096"
+    input-max-token: "100000"
+
   embedding:
     embeddingModel: all-minilm-l6-v2
-    aiChatModel: gemini-1.5-flash     # 또는 gemini-1.5-pro
+    aiChatModel: gemini-1.5-flash    # 또는 gemini-1.5-pro
+    inputMaxToken: 1048576    # 약 100만 토큰 (최대)
+    outputMaxToken: 8192      # 최대 출력

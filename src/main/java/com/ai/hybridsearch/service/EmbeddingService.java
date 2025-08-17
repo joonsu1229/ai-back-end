@@ -1,7 +1,6 @@
 package com.ai.hybridsearch.service;
 
-import com.ai.hybridsearch.config.EmbeddingConfig;
-import com.ai.hybridsearch.model.DimensionReducedEmbeddingModel;
+import com.ai.hybridsearch.config.AiModelConfig;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.embedding.onnx.allminilml6v2.AllMiniLmL6V2EmbeddingModel;
@@ -17,7 +16,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class EmbeddingService {
 
-    private final EmbeddingConfig config;
+    private final AiModelConfig config;
     private EmbeddingModel embeddingModel;
 
     @PostConstruct
@@ -63,12 +62,12 @@ public class EmbeddingService {
                 .apiKey(config.getOpenai().getApiKey())
                 .dimensions(config.getTargetDimensions());
 
-        if (config.getOpenai().getModel() != null) {
-            builder.modelName(config.getOpenai().getModel());
+        if (config.getOpenai().getEmbeddingModel() != null) {
+            builder.modelName(config.getOpenai().getEmbeddingModel());
         }
 
         embeddingModel = builder.build();
-        log.info("OpenAI 모델 생성 완료 - Model: {}", config.getOpenai().getModel() != null ? config.getOpenai().getModel() : "default");
+        log.info("OpenAI 모델 생성 완료 - Model: {}", config.getOpenai().getEmbeddingModel() != null ? config.getOpenai().getEmbeddingModel() : "default");
     }
 
     private void initGeminiModel() {
@@ -77,10 +76,10 @@ public class EmbeddingService {
 
         embeddingModel = GoogleAiEmbeddingModel.builder()
                 .apiKey(geminiConfig.getApiKey())
-                .modelName(geminiConfig.getModel())
+                .modelName(geminiConfig.getEmbeddingModel())
                 .build();
 
-        log.info("Gemini 모델 생성 완료 - Model: {}", geminiConfig.getModel());
+        log.info("Gemini 모델 생성 완료 - Model: {}", geminiConfig.getEmbeddingModel());
     }
 
     private void validateOpenAiConfig() {
