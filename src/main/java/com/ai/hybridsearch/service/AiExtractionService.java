@@ -56,6 +56,15 @@ public interface AiExtractionService {
     }
 
     /**
+     * 전처리된 텍스트에서 채용공고 추출
+     * @param text 전처리된 텍스트
+     * @param siteName 사이트 이름
+     * @return 추출된 채용공고 목록
+     */
+    List<JobPosting> extractJobsFromText(String text, String siteName);
+
+
+    /**
      * AI 모델 상태 정보 클래스
      */
     record ModelStatus(
