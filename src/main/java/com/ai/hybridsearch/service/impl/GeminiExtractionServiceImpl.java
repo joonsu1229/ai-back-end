@@ -79,7 +79,7 @@ public class GeminiExtractionServiceImpl implements AiExtractionService {
                     .apiKey(aiModelConfig.getGemini().getApiKey())
                     .modelName(getModelName())
                     .temperature(crawlingConfig.getSiteSpecific().getDefaultTemperature())
-                    .maxOutputTokens(getOutputMaxTokens())
+                    .maxOutputTokens(100000)
                     .timeout(Duration.ofSeconds(crawlingConfig.getAiResponseTimeoutSeconds()))
                     .build();
 
