@@ -4,6 +4,7 @@ import com.ai.hybridsearch.config.AiCrawlingConfig;
 import com.ai.hybridsearch.config.AiModelConfig;
 import com.ai.hybridsearch.entity.JobPosting;
 import com.ai.hybridsearch.service.AiExtractionService;
+import com.ai.hybridsearch.util.PartialJsonParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.model.chat.ChatLanguageModel;
@@ -12,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
@@ -49,6 +51,8 @@ public class OpenAiExtractionServiceImpl implements AiExtractionService {
     private static final Pattern STYLE_PATTERN = Pattern.compile("<style[^>]*>.*?</style>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
     private static final Pattern COMMENT_PATTERN = Pattern.compile("<!--.*?-->", Pattern.DOTALL);
     private static final Pattern RETRY_DELAY_PATTERN = Pattern.compile("\"retryDelay\"\\s*:\\s*\"(\\d+)s\"");
+
+    private PartialJsonParser partialJsonParser;
 
     @PostConstruct
     public void init() {
@@ -187,6 +191,16 @@ public class OpenAiExtractionServiceImpl implements AiExtractionService {
             log.info("신뢰도 계산 실패", e);
             return 0.9; // OpenAI 기본 신뢰도
         }
+    }
+
+    @Override
+    public ModelStatus getModelStatus() {
+        return AiExtractionService.super.getModelStatus();
+    }
+
+    @Override
+    public List<JobPosting> extractJobsFromText(String text, String siteName) {
+        return null;
     }
 
     // ===== 내부 헬퍼 메서드들 =====
@@ -410,9 +424,9 @@ public class OpenAiExtractionServiceImpl implements AiExtractionService {
 
     private List<JobPosting> parseJobListResponse(String response, String siteName) {
         List<JobPosting> jobs = new ArrayList<>();
-
+        PartialJsonParser partialJsonParser = new PartialJsonParser();
         try {
-            String jsonStr = extractJsonFromResponse(response);
+            String jsonStr = partialJsonParser.extractValidJson(response);
             JsonNode jsonArray = objectMapper.readTree(jsonStr);
 
             if (!jsonArray.isArray()) {
@@ -459,8 +473,9 @@ public class OpenAiExtractionServiceImpl implements AiExtractionService {
     }
 
     private void updateJobFromDetailResponse(JobPosting job, String response) {
+        PartialJsonParser partialJsonParser = new PartialJsonParser();
         try {
-            String jsonStr = extractJsonFromResponse(response);
+            String jsonStr = partialJsonParser.extractValidJson(response);
             JsonNode jsonNode = objectMapper.readTree(jsonStr);
 
             updateJobField(job::setDescription, job.getDescription(), getTextValue(jsonNode, "description"));
