@@ -26,13 +26,6 @@ spring:
     caffeine:
       spec: maximumSize=1000,expireAfterWrite=1h
 
-langchain:
-  model-type: onnx
-  embedding:
-    enabled: true  # 이 줄 추가
-    model: all-minilm-l6-v2
-
-
 # Management & Monitoring
 management:
   endpoints:
