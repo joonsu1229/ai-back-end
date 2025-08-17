@@ -168,9 +168,6 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
     /**
      * HTML 크기를 줄이는 전처리 (토큰 제한 대응)
      */
-    /**
-     * HTML 크기를 줄이는 전처리 (토큰 제한 대응)
-     */
     private String preprocessHtmlForTokenLimit(String html) {
         if (html == null || html.isEmpty()) {
             return "";
@@ -532,12 +529,18 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
                     ".h7nnv10"
             };
             case "원티드" -> new String[]{
-                    // 가장 안정적이고 추천하는 셀렉터입니다.
-                    "div[class*='JobCard_container']",
-
-                    // 만약을 위한 대체 셀렉터입니다.
-                    ".JobCard_container__zQcZs",
-                    "div[role='listitem']"
+                    // 0: 공고 전체 컨테이너
+                    "div.JobCard_container__zQcZs",
+                    // 1: 상세 URL
+                    "a[href]",
+                    // 2: 공고 제목
+                    "strong.JobCard_title___kfvj",
+                    // 3: 회사명
+                    "span.CompanyNameWithLocationPeriod__company__ByVLu",
+                    // 4: 경력/요건
+                    "span.CompanyNameWithLocationPeriod__location__4_w0l",
+                    // 5: 이미지
+                    "div.JobCard_thumbnail__A1ieG img"
             };
             case "프로그래머스" -> new String[]{
                     ".job-card",
@@ -564,43 +567,69 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
     /**
      * 개별 요소에서 채용공고 정보 추출
      */
+// 6. 기존 구조에 맞춘 수정된 메인 추출 메소드
     private JobTextInfo extractJobInfoFromElement(Element element, String siteName) {
         JobTextInfo info = new JobTextInfo();
 
-        // 제목 추출
+        // 제목 추출 (안정적인 선택자 사용)
         info.title = findTextBySelectors(element, new String[]{
+                // 원티드 특화 - 안정적인 방법들
+                "strong[class*='title']",              // title이 포함된 strong 태그
+                "strong[class*='Title']",              // Title이 포함된 strong 태그
+                "div[class*='content'] strong",        // content 안의 strong
+                "a[href*='/wd/'] strong",              // 원티드 링크 안의 strong
+                "a[data-position-name]",               // data 속성에서 추출
+                // 일반적인 선택자들
                 "h1, h2, h3",
                 ".title",
                 ".job-title",
                 ".recruit-title",
-                "a[href*='job']"
+                "strong"  // 마지막 fallback
         });
 
-        // 회사명 추출
+        // 회사명 추출 (안정적인 선택자 사용)
         info.company = findTextBySelectors(element, new String[]{
+                // 원티드 특화 - 안정적인 방법들
+                "span[class*='company']",              // company가 포함된 span
+                "span[class*='Company']",              // Company가 포함된 span
+                "[data-company-name]",                 // data 속성에서 직접 추출
+                "a[data-company-name]",                // 링크의 data 속성
+                // 일반적인 선택자들
                 ".company",
                 ".company-name",
                 ".corp-name",
                 "[class*='company']"
         });
 
-        // 위치 추출
+        // 위치/경력 추출 (안정적인 선택자 사용)
         info.location = findTextBySelectors(element, new String[]{
+                // 원티드 특화 - 안정적인 방법들
+                "span[class*='location']",             // location이 포함된 span
+                "span[class*='Location']",             // Location이 포함된 span
+                "span[class*='Period']",               // Period가 포함된 span (경력 정보)
+                "div[class*='content'] span:nth-child(3)", // content의 3번째 span (경력이 보통 3번째)
+                // 일반적인 선택자들
                 ".location",
                 ".area",
                 ".workplace",
                 "[class*='location']"
         });
 
-        // 급여 추출
+        // 급여/보상 추출 (안정적인 선택자 사용)
         info.salary = findTextBySelectors(element, new String[]{
+                // 원티드 특화 - 안정적인 방법들
+                "span[class*='reward']",               // reward가 포함된 span
+                "span[class*='Reward']",               // Reward가 포함된 span
+                "*:contains('합격보상금')",             // '합격보상금' 텍스트 포함
+                "*:contains('연봉')",                  // '연봉' 텍스트 포함
+                "*:contains('만원')",                  // '만원' 텍스트 포함
+                // 일반적인 선택자들
                 ".salary",
                 ".pay",
                 ".wage",
                 "[class*='salary']"
         });
-
-        // URL 추출
+        // URL 추출 (수정된 메소드 사용)
         info.url = findJobUrlFromElement(element, siteName);
 
         // 추가 설명
@@ -617,57 +646,122 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
      */
     private String findTextBySelectors(Element element, String[] selectors) {
         for (String selector : selectors) {
-            Element found = element.selectFirst(selector);
-            if (found != null) {
-                String text = found.text().trim();
-                if (text.length() >= 2 && text.length() <= 200) {
-                    return text;
+            try {
+                // :contains() 선택자 처리
+                if (selector.contains(":contains(")) {
+                    String searchText = selector.substring(
+                            selector.indexOf("'") + 1,
+                            selector.lastIndexOf("'")
+                    );
+                    Elements elements = element.select("*");
+                    for (Element el : elements) {
+                        String text = el.ownText(); // 자식 요소 텍스트 제외
+                        if (text.contains(searchText)) {
+                            return text.trim();
+                        }
+                    }
+                    continue;
                 }
+
+                // data 속성 확인
+                if (selector.startsWith("[data-")) {
+                    Element el = element.selectFirst("a");
+                    if (el != null) {
+                        String attrName = selector.substring(1, selector.length() - 1);
+                        String attrValue = el.attr(attrName);
+                        if (!attrValue.isEmpty()) {
+                            return attrValue.trim();
+                        }
+                    }
+                    continue;
+                }
+
+                // 일반 선택자 처리
+                Element el = element.selectFirst(selector);
+                if (el != null) {
+                    String text = el.text().trim();
+                    if (!text.isEmpty()) {
+                        return text;
+                    }
+                }
+            } catch (Exception e) {
+                // 선택자 오류 시 다음 선택자 시도
+                continue;
             }
         }
-        return null;
+        return "";
+    }
+
+    private String convertToAbsoluteUrl(String relativeUrl, String siteName) {
+        if (relativeUrl == null || relativeUrl.isEmpty()) {
+            return "";
+        }
+
+        if (relativeUrl.startsWith("http://") || relativeUrl.startsWith("https://")) {
+            return relativeUrl;
+        }
+
+        String baseUrl = getBaseUrlForSite(siteName);
+
+        if (relativeUrl.startsWith("/")) {
+            return baseUrl + relativeUrl;
+        } else {
+            return baseUrl + "/" + relativeUrl;
+        }
     }
 
     /**
      * 요소에서 채용공고 URL 찾기
      */
     private String findJobUrlFromElement(Element element, String siteName) {
-        Element link = element.selectFirst("a[href]");
-        if (link != null) {
-            String href = link.attr("href").trim();
-            if (href.contains("job") || href.contains("recruit") || href.contains("position")) {
-                return normalizeJobUrl(href, siteName);
+        String url = "";
+
+        // 1순위: data 속성에서 추출 (가장 안정적)
+        Element linkElement = element.selectFirst("a[href]");
+        if (linkElement != null) {
+            // data 속성들 확인
+            url = linkElement.attr("data-href");
+            if (url.isEmpty()) {
+                url = linkElement.attr("href");
             }
         }
-        return null;
+
+        // 2순위: 다양한 선택자로 링크 찾기
+        if (url.isEmpty()) {
+            String[] urlSelectors = {
+                    "a[href*='/wd/']",       // 원티드 특화
+                    "a[href*='job']",        // job 포함 URL
+                    "a[href*='position']",   // position 포함 URL
+                    "a[href]"                // 모든 링크
+            };
+
+            for (String selector : urlSelectors) {
+                Element el = element.selectFirst(selector);
+                if (el != null) {
+                    url = el.attr("href");
+                    if (!url.isEmpty()) {
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 상대 URL을 절대 URL로 변환
+        return convertToAbsoluteUrl(url, siteName);
     }
 
     /**
      * URL 정규화
      */
-    private String normalizeJobUrl(String url, String siteName) {
-        if (url == null || url.isEmpty()) return null;
-
-        if (url.startsWith("http://") || url.startsWith("https://")) {
-            return url;
-        }
-
-        Map<String, String> baseUrls = Map.of(
-                "사람인", "https://www.saramin.co.kr",
-                "잡코리아", "https://www.jobkorea.co.kr",
-                "원티드", "https://www.wanted.co.kr",
-                "프로그래머스", "https://career.programmers.co.kr",
-                "점프", "https://www.jumpit.co.kr"
-        );
-
-        String baseUrl = baseUrls.get(siteName);
-        if (baseUrl != null) {
-            return url.startsWith("/") ? baseUrl + url : baseUrl + "/" + url;
-        }
-
-        return url;
+    private String getBaseUrlForSite(String siteName) {
+        return switch (siteName.toLowerCase()) {
+            case "원티드", "wanted" -> "https://www.wanted.co.kr";
+            case "사람인", "saramin" -> "https://www.saramin.co.kr";
+            case "잡코리아", "jobkorea" -> "https://www.jobkorea.co.kr";
+            case "인크루트", "incruit" -> "https://www.incruit.com";
+            default -> "https://www.wanted.co.kr";
+        };
     }
-
     /**
      * 키워드 기반 채용공고 추출 (폴백)
      */
