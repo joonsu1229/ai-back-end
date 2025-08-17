@@ -528,11 +528,8 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
                     ".list_item"
             };
             case "잡코리아" -> new String[]{
-                    ".recruit-info",
-                    ".post-list-info",
-                    ".list-post",
-                    ".recruit-item",
-                    "div[class*='post']"
+                    "div[data-sentry-component='CardCommon']",
+                    ".h7nnv10"
             };
             case "원티드" -> new String[]{
                     ".Job_className",
