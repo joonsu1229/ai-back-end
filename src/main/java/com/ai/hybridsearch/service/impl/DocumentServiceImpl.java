@@ -32,7 +32,7 @@ public class DocumentServiceImpl implements DocumentService {
     // Embedding 업데이트
     public void updateEmbedding(String embedding, Long id) {
         Query query = entityManager.createNativeQuery(
-            "UPDATE documents SET embedding = CAST(?1 AS vector) WHERE id = ?2"
+            "UPDATE jsai.documents SET embedding = CAST(?1 AS vector) WHERE id = ?2"
         );
         query.setParameter(1, embedding);
         query.setParameter(2, id);
@@ -49,7 +49,7 @@ public class DocumentServiceImpl implements DocumentService {
 
         // EntityManager로 INSERT 실행
         Query query = entityManager.createNativeQuery(
-            "INSERT INTO documents (title, content, category, created_at, updated_at, embedding) " +
+            "INSERT INTO jsai.documents (title, content, category, created_at, updated_at, embedding) " +
             "VALUES (?1, ?2, ?3, ?4, ?5, CAST(?6 AS vector)) RETURNING id"
         );
         query.setParameter(1, document.getTitle());

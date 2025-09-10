@@ -11,7 +11,7 @@ public interface VectorSearchRepository extends JpaRepository<Document, Long> {
 
     @Query(value = """
         SELECT d.*, 1 - (d.embedding <=> CAST(:vector AS vector)) AS similarity
-        FROM documents d
+        FROM jsai.documents d
         ORDER BY d.embedding <=> CAST(:vector AS vector)
         LIMIT :limit
         """, nativeQuery = true)
@@ -19,7 +19,7 @@ public interface VectorSearchRepository extends JpaRepository<Document, Long> {
 
     @Query(value = """
         SELECT d.*, 1 - (d.embedding <=> CAST(:vector AS vector)) AS similarity
-        FROM documents d
+        FROM jsai.documents d
         WHERE d.category = :category
         ORDER BY d.embedding <=> CAST(:vector AS vector)
         LIMIT :limit
@@ -28,7 +28,7 @@ public interface VectorSearchRepository extends JpaRepository<Document, Long> {
 
     @Query(value = """
         SELECT d.*, ts_rank(d.search_vector, plainto_tsquery(:query)) as rank
-        FROM documents d
+        FROM jsai.documents d
         WHERE d.search_vector @@ plainto_tsquery(:query)
         ORDER BY rank DESC
         LIMIT :limit
@@ -37,7 +37,7 @@ public interface VectorSearchRepository extends JpaRepository<Document, Long> {
 
     @Query(value = """
         SELECT d.*, ts_rank(d.search_vector, plainto_tsquery(:query)) as rank
-        FROM documents d
+        FROM jsai.documents d
         WHERE d.search_vector @@ plainto_tsquery(:query)
         AND (:category IS NULL OR d.category = :category)
         ORDER BY rank DESC
@@ -49,7 +49,7 @@ public interface VectorSearchRepository extends JpaRepository<Document, Long> {
         SELECT d.*, 
                ts_rank_cd(d.search_vector, plainto_tsquery(:query)) as detailed_rank,
                ts_rank(d.search_vector, plainto_tsquery(:query)) as simple_rank
-        FROM documents d
+        FROM jsai.documents d
         WHERE d.search_vector @@ plainto_tsquery(:query)
         ORDER BY detailed_rank DESC, simple_rank DESC
         LIMIT :limit
@@ -62,7 +62,7 @@ public interface VectorSearchRepository extends JpaRepository<Document, Long> {
             MAX(ts_rank(d.search_vector, plainto_tsquery(:query))) as max_score,
             AVG(ts_rank(d.search_vector, plainto_tsquery(:query))) as avg_score,
             COUNT(*) as match_count
-        FROM documents d
+        FROM jsai.documents d
         WHERE d.search_vector @@ plainto_tsquery(:query)
         """, nativeQuery = true)
     Object[] analyzeFullTextScores(@Param("query") String query);

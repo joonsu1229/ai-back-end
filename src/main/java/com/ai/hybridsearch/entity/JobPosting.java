@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 import java.util.Vector;
 
 @Entity
-@Table(name = "job_postings")
+@Table(name = "job_postings", schema = "jsai")
 @Getter
 @Setter
 @NoArgsConstructor

@@ -107,12 +107,12 @@ public interface JobPostingRepository extends JpaRepository<JobPosting, Long> {
     List<JobPosting> findJobsDeadlineBetween(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
 
     @Transactional(readOnly = true)
-    @Query(value = "SELECT *, (1 - (embedding <=> CAST(?1 AS vector))) as similarity FROM job_postings WHERE is_active = true ORDER BY embedding <=> CAST(?1 AS vector) LIMIT ?2", nativeQuery = true)
+    @Query(value = "SELECT *, (1 - (embedding <=> CAST(?1 AS vector))) as similarity FROM jsai.job_postings WHERE is_active = true ORDER BY embedding <=> CAST(?1 AS vector) LIMIT ?2", nativeQuery = true)
     List<Object[]> findSimilarJobs(String embeddingVector, int limit);
 
     @Transactional(readOnly = true)
     @Query(value = "SELECT j.*, (1 - (j.embedding <=> CAST(?1 AS vector))) as similarity " +
-            "FROM job_postings j " +
+            "FROM jsai.job_postings j " +
             "WHERE j.is_active = true " +
             "AND (LOWER(j.title) LIKE LOWER(CONCAT('%', ?2, '%')) " +
             "OR LOWER(j.company) LIKE LOWER(CONCAT('%', ?2, '%')) " +
@@ -144,7 +144,7 @@ public interface JobPostingRepository extends JpaRepository<JobPosting, Long> {
     );
 
     @Transactional(readOnly = true)
-    @Query(value = "SELECT COUNT(*) FROM job_postings WHERE is_active=true", nativeQuery = true)
+    @Query(value = "SELECT COUNT(*) FROM jsai.job_postings WHERE is_active=true", nativeQuery = true)
     long countActiveJobs();
 
     @Transactional(readOnly = true)
@@ -183,7 +183,7 @@ public interface JobPostingRepository extends JpaRepository<JobPosting, Long> {
 
     @Modifying(clearAutomatically = true)
     @Transactional
-    @Query(value = "UPDATE job_postings SET embedding = CAST(:embeddingText AS vector) WHERE id = :id", nativeQuery = true)
+    @Query(value = "UPDATE jsai.job_postings SET embedding = CAST(:embeddingText AS vector) WHERE id = :id", nativeQuery = true)
     int updateEmbedding(@Param("id") Long id, @Param("embeddingText") String embeddingText);
 
     @Modifying
@@ -198,6 +198,6 @@ public interface JobPostingRepository extends JpaRepository<JobPosting, Long> {
 
     @Modifying
     @Transactional
-    @Query(value = "INSERT INTO job_posting (title, company, source_site, source_url, job_category, location, description, requirements, benefits, salary, employment_type, experience_level, is_active, created_at, updated_at) VALUES (:#{#job.title}, :#{#job.company}, :#{#job.sourceSite}, :#{#job.sourceUrl}, :#{#job.jobCategory}, :#{#job.location}, :#{#job.description}, :#{#job.requirements}, :#{#job.benefits}, :#{#job.salary}, :#{#job.employmentType}, :#{#job.experienceLevel}, :#{#job.isActive}, :#{#job.createdAt}, :#{#job.updatedAt})", nativeQuery = true)
+    @Query(value = "INSERT INTO jsai.job_posting (title, company, source_site, source_url, job_category, location, description, requirements, benefits, salary, employment_type, experience_level, is_active, created_at, updated_at) VALUES (:#{#job.title}, :#{#job.company}, :#{#job.sourceSite}, :#{#job.sourceUrl}, :#{#job.jobCategory}, :#{#job.location}, :#{#job.description}, :#{#job.requirements}, :#{#job.benefits}, :#{#job.salary}, :#{#job.employmentType}, :#{#job.experienceLevel}, :#{#job.isActive}, :#{#job.createdAt}, :#{#job.updatedAt})", nativeQuery = true)
     void insertJobPosting(@Param("job") JobPosting job);
 }

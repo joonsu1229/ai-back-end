@@ -34,7 +34,7 @@ public class VectorServiceImpl implements VectorService {
     public List<Document> findByFullTextSearch(String query, int limit) {
         Query nativeQuery = entityManager.createNativeQuery("""
             SELECT d.*, ts_rank(d.search_vector, plainto_tsquery(?1)) as rank
-            FROM documents d
+            FROM jsai.documents d
             WHERE d.search_vector @@ plainto_tsquery(?1)
             ORDER BY rank DESC
             LIMIT ?2
@@ -49,7 +49,7 @@ public class VectorServiceImpl implements VectorService {
     public List<Document> findByFullTextSearchAndCategory(String query, String category, int limit) {
         Query nativeQuery = entityManager.createNativeQuery("""
             SELECT d.*, ts_rank(d.search_vector, plainto_tsquery(?1)) as rank
-            FROM documents d
+            FROM jsai.documents d
             WHERE d.search_vector @@ plainto_tsquery(?1)
             AND (?2 IS NULL OR d.category = ?2)
             ORDER BY rank DESC
@@ -64,7 +64,7 @@ public class VectorServiceImpl implements VectorService {
     // Embedding 업데이트
     public void updateEmbedding(String embedding, Long id) {
         Query query = entityManager.createNativeQuery(
-            "UPDATE documents SET embedding = CAST(?1 AS vector) WHERE id = ?2"
+            "UPDATE jsai.documents SET embedding = CAST(?1 AS vector) WHERE id = ?2"
         );
         query.setParameter(1, embedding);
         query.setParameter(2, id);
@@ -81,7 +81,7 @@ public class VectorServiceImpl implements VectorService {
 
         // EntityManager로 INSERT 실행
         Query query = entityManager.createNativeQuery(
-            "INSERT INTO documents (title, content, category, created_at, updated_at, embedding) " +
+            "INSERT INTO jsai.documents (title, content, category, created_at, updated_at, embedding) " +
             "VALUES (?1, ?2, ?3, ?4, ?5, CAST(?6 AS vector)) RETURNING id"
         );
         query.setParameter(1, document.getTitle());
