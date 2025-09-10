@@ -37,7 +37,7 @@ langchain:
   gemini:
     api-key: ${GEMINI_API_KEY}
     embeddingModel: embedding-001
-    aiChatModel: gemini-1.5-flash    # 또는 gemini-1.5-pro
+    aiChatModel: gemini-2.5-pro    # 또는 gemini-1.5-pro
     inputMaxToken: 1048576    # 약 100만 토큰 (최대)
     outputMaxToken: 8192      # 최대 출력
 
