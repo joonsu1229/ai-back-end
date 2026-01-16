@@ -15,5 +15,4 @@ public interface JobCrawlingService {
     Map<String, Object> getSiteStatus(String siteId);
     List<Map<String, Object>> getAllSitesStatus();
     Map<String, Object> getSiteStatistics();
-    void testAiExtraction(String url, String siteName);
 }

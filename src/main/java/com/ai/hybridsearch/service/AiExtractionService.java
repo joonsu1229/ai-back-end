@@ -23,6 +23,16 @@ public interface AiExtractionService {
      */
     JobPosting extractJobDetailFromHtml(JobPosting baseJob, String detailHtml);
 
+    String extractJobDetailFromImage(JobPosting baseJob,byte[] imageBytes);
+
+    /**
+     * HTML에서 메인 콘텐츠 iframe의 src 속성을 찾음
+     *
+     * @param html 메인 페이지의 전체 HTML
+     * @return 추출된 iframe src 값, 없으면 null 또는 빈 문자열
+     */
+    String findIframeSrc(String html);
+
     /**
      * 현재 사용 중인 AI 모델 타입 반환
      *
@@ -54,15 +64,6 @@ public interface AiExtractionService {
     default ModelStatus getModelStatus() {
         return new ModelStatus(getModelType(), isModelAvailable(), getExtractionConfidence("", ""));
     }
-
-    /**
-     * 전처리된 텍스트에서 채용공고 추출
-     * @param text 전처리된 텍스트
-     * @param siteName 사이트 이름
-     * @return 추출된 채용공고 목록
-     */
-    List<JobPosting> extractJobsFromText(String text, String siteName);
-
 
     /**
      * AI 모델 상태 정보 클래스

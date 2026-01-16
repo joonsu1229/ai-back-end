@@ -155,6 +155,16 @@ public class OpenAiExtractionServiceImpl implements AiExtractionService {
     }
 
     @Override
+    public String extractJobDetailFromImage(JobPosting baseJob, byte[] imageBytes) {
+        return null;
+    }
+
+    @Override
+    public String findIframeSrc(String html) {
+        return "";
+    }
+
+    @Override
     public String getModelType() {
         return "openai";
     }
@@ -196,11 +206,6 @@ public class OpenAiExtractionServiceImpl implements AiExtractionService {
     @Override
     public ModelStatus getModelStatus() {
         return AiExtractionService.super.getModelStatus();
-    }
-
-    @Override
-    public List<JobPosting> extractJobsFromText(String text, String siteName) {
-        return null;
     }
 
     // ===== 내부 헬퍼 메서드들 =====
@@ -349,42 +354,53 @@ public class OpenAiExtractionServiceImpl implements AiExtractionService {
 
     private String createJobListExtractionPrompt(String html, String siteName) {
         return String.format("""
-            You are an expert web scraper specialized in extracting job posting information. 
-            Extract job posting information accurately from the following HTML content from %s job listing page.
-            
-            Required information to extract:
-            - title: Job title (required)
-            - company: Company name (required)  
-            - location: Work location
-            - salary: Salary/compensation information
-            - employmentType: Employment type (full-time, contract, intern, freelance, etc.)
-            - experienceLevel: Experience requirement (entry-level, experienced, no experience required, etc.)
-            - sourceUrl: Job posting detail page link (must be complete URL)
-            
-            Important rules:
-            1. Respond ONLY in valid JSON array format
-            2. Do not include any other text or explanations
-            3. sourceUrl must be a complete URL (starting with http:// or https://)
-            4. Use null for missing information
-            5. Exclude advertisements, banners, or irrelevant content
-            6. Both title and company are mandatory fields
-            
-            Response example:
-            [
-                {
-                    "title": "Backend Developer",
-                    "company": "ABC Tech",
-                    "location": "Seoul Gangnam-gu",
-                    "salary": "Annual 30-50 million KRW",
-                    "employmentType": "Full-time",
-                    "experienceLevel": "3+ years experience",
-                    "sourceUrl": "https://example.com/job/123"
-                }
-            ]
-            
-            HTML content:
-            %s
-            """, siteName, html);
+        당신은 채용 공고 정보 추출을 전문으로 하는 웹 스크래퍼입니다.
+        '%s' 웹사이트의 다음 HTML 콘텐츠에서 채용 공고 정보를 정확하게 추출하세요.
+        HTML 구조는 각 채용 사이트(사람인, 잡코리아, 원티드 등)마다 다릅니다. 제공된 HTML을 주의 깊게 분석하세요.
+
+        각 채용 공고에서 추출할 정보:
+        - title: 채용 직무명 (필수).
+        - company: 회사명 (필수).
+        - location: 근무지 (시/군/구 단위까지, 예: "서울시 도봉구", "경기도 일산").
+        - salary: 급여 또는 보상 정보.
+        - employmentType: 고용 형태 (예: "정규직", "계약직", "인턴").
+        - experienceLevel: 요구 경력 수준 (예: "신입", "경력", "무관").
+        - sourceUrl: 상세 채용 공고로 연결되는 URL 링크. 이 부분이 가장 중요합니다. 채용 직무명에 대한 'a' 태그를 찾아 'href' 속성을 추출하세요. 값은 "/zf_user/jobs/..."와 같은 상대 경로이거나 전체 URL일 수 있습니다. 'href' 속성에 나타난 그대로 추출하세요.
+
+        주요 규칙:
+        1.  반드시 유효한 JSON 객체 배열 형식으로만 응답하세요. 다른 텍스트나 설명을 포함하지 마세요.
+        2.  `sourceUrl`이 중요합니다. 채용 직무명과 관련된 앵커 태그(`<a>`)를 찾아 `href` 속성 값을 추출하세요. 전체 URL을 만들려고 시도하지 마세요. 시스템이 처리할 것입니다.
+        3.  정보를 사용할 수 없는 경우 `null`을 사용하세요.
+        4.  광고, 배너 및 관련 없는 콘텐츠는 제외하세요.
+        5.  `title`과 `company`는 필수 필드입니다.
+        6.  `location`의 경우, "서울 강남구", "서울특별시 강남구"는 "서울시 강남구"로, "경기도 수원시 팔달구"는 "경기도 수원시"로 표시하세요 (시/군/구 단위까지).
+        7.  최종 JSON은 `[{...}, {...}]`과 같은 깔끔한 배열이어야 합니다.
+
+        응답 예시:
+        [
+            {
+                "title": "백엔드 개발자",
+                "company": "㈜한샘",
+                "location": "서울시 마포구",
+                "salary": null,
+                "employmentType": "정규직",
+                "experienceLevel": "경력3년↑",
+                "sourceUrl": "/zf_user/jobs/relay/view?view_type=search&rec_idx=52796819"
+            },
+            {
+                "title": "프론트엔드 개발자",
+                "company": "카카오",
+                "location": "경기도 성남시",
+                "salary": "회사내규에 따름",
+                "employmentType": "정규직",
+                "experienceLevel": "신입",
+                "sourceUrl": "https://careers.kakao.com/jobs/456"
+            }
+        ]
+
+        HTML 내용:
+        %s
+        """, siteName, html);
     }
 
     private String createJobDetailExtractionPrompt(String html, JobPosting baseJob) {
