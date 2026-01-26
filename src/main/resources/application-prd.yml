@@ -9,17 +9,24 @@ spring:
       hibernate:
         default_schema: jsai
 
+#logging:
+#  level:
+#    p6spy: DEBUG
+#    org.hibernate.SQL: DEBUG
+#    org.hibernate.orm.jdbc.bind: TRACE
+#    org.hibernate.orm.jdbc.extract: TRACE
+#    org.springframework.jdbc.core: TRACE
+#    # 패키지 전체
+#    com.ai.hybridsearch.service: DEBUG
+#    org.springframework.context: DEBUG
+#    org.springframework.boot.context.properties: DEBUG
+
 logging:
   level:
-    p6spy: DEBUG
-    org.hibernate.SQL: DEBUG
-    org.hibernate.orm.jdbc.bind: TRACE
-    org.hibernate.orm.jdbc.extract: TRACE
-    org.springframework.jdbc.core: TRACE
-    # 패키지 전체
-    com.ai.hybridsearch.service: DEBUG
-    org.springframework.context: DEBUG
-    org.springframework.boot.context.properties: DEBUG
+    p6spy: INFO
+    org.hibernate: INFO
+    org.springframework: INFO
+    com.ai.hybridsearch: DEBUG
 
 langchain:
   model-type: ${MODEL_TYPE}
