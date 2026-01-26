@@ -101,21 +101,20 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
         try {
             ChromeOptions options = new ChromeOptions();
 
-            // 1. [핵심 변경] OS 환경에 따른 드라이버 경로 설정 (ARM 서버 이슈 해결)
+            // 1. OS 환경에 따른 드라이버 경로 설정 (ARM 서버 이슈)
             String os = System.getProperty("os.name").toLowerCase();
 
             if (os.contains("linux")) {
-                // Linux(서버) 환경: apt로 설치한 시스템 브라우저/드라이버 강제 지정
-                // 이렇게 하면 Selenium Manager가 실행되지 않아 "Syntax error"가 발생하지 않음
-                System.setProperty("webdriver.chrome.driver", "/usr/bin/chromedriver");
-                options.setBinary("/usr/bin/chromium-browser");
+                options.setBinary("/usr/bin/chromium");
 
-                // 리눅스 서버 필수 옵션
-                options.addArguments("--headless=new"); // 최신 헤드리스 모드
+                // 드라이버 경로 (일반적으로 /usr/bin/chromedriver)
+                System.setProperty("webdriver.chrome.driver", "/usr/bin/chromedriver");
+
+                options.addArguments("--headless=new");
                 options.addArguments("--no-sandbox");
                 options.addArguments("--disable-dev-shm-usage");
                 options.addArguments("--disable-gpu");
-                options.addArguments("--remote-allow-origins=*"); // 연결 거부 방지
+                options.addArguments("--remote-allow-origins=*");
             } else {
                 // Windows(로컬 개발) 환경: 기존 방식 유지 (또는 Selenium Manager 자동 사용)
                 // 로컬에 drivers 폴더가 있다면 유지, 없다면 아래 줄 주석 처리 시 자동 다운로드됨
