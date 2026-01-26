@@ -99,6 +99,84 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
 
     private WebDriver createWebDriver() {
         try {
+            ChromeOptions options = new ChromeOptions();
+
+            // 1. [핵심 변경] OS 환경에 따른 드라이버 경로 설정 (ARM 서버 이슈 해결)
+            String os = System.getProperty("os.name").toLowerCase();
+
+            if (os.contains("linux")) {
+                // Linux(서버) 환경: apt로 설치한 시스템 브라우저/드라이버 강제 지정
+                // 이렇게 하면 Selenium Manager가 실행되지 않아 "Syntax error"가 발생하지 않음
+                System.setProperty("webdriver.chrome.driver", "/usr/bin/chromedriver");
+                options.setBinary("/usr/bin/chromium-browser");
+
+                // 리눅스 서버 필수 옵션
+                options.addArguments("--headless=new"); // 최신 헤드리스 모드
+                options.addArguments("--no-sandbox");
+                options.addArguments("--disable-dev-shm-usage");
+                options.addArguments("--disable-gpu");
+                options.addArguments("--remote-allow-origins=*"); // 연결 거부 방지
+            } else {
+                // Windows(로컬 개발) 환경: 기존 방식 유지 (또는 Selenium Manager 자동 사용)
+                // 로컬에 drivers 폴더가 있다면 유지, 없다면 아래 줄 주석 처리 시 자동 다운로드됨
+                 System.setProperty("webdriver.chrome.driver", "drivers/chromedriver-win.exe");
+            }
+
+            // 2. 스마트 차단 회피 설정 (기존 유지 + 강화)
+            options.addArguments("--disable-web-security");
+            options.addArguments("--disable-features=VizDisplayCompositor");
+            options.addArguments("--disable-extensions");
+            options.addArguments("--disable-plugins");
+            options.addArguments("--disable-blink-features=AutomationControlled"); // 자동화 탐지 방지
+            options.setExperimentalOption("useAutomationExtension", false);
+            options.setExperimentalOption("excludeSwitches", Collections.singletonList("enable-automation"));
+
+            // 3. 성능 최적화 (토큰/속도 절약) - 기존 로직 유지
+            options.setPageLoadStrategy(PageLoadStrategy.EAGER); // DOM 로드 시점까지만 대기
+            options.addArguments("--window-size=1920,1080");
+
+            Map<String, Object> prefs = new HashMap<>();
+            prefs.put("profile.managed_default_content_settings.images", 2); // 이미지 차단
+            prefs.put("profile.managed_default_content_settings.stylesheets", 2); // CSS 차단
+            // 추가: 팝업, 위치 정보 등 불필요한 권한 요청 차단
+            prefs.put("profile.default_content_setting_values.notifications", 2);
+            prefs.put("profile.default_content_setting_values.geolocation", 2);
+            options.setExperimentalOption("prefs", prefs);
+
+            // 4. User-Agent 랜덤 설정 (기존 로직 유지)
+            String[] userAgents = {
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            };
+            String userAgent = userAgents[ThreadLocalRandom.current().nextInt(userAgents.length)];
+            options.addArguments("--user-agent=" + userAgent);
+
+            // 5. WebDriver 인스턴스 생성
+            ChromeDriver driver = new ChromeDriver(options);
+
+            // 6. [스마트 기능 추가] CDP(Chrome DevTools Protocol)를 이용한 완벽한 위장
+            // 기존 js.executeScript보다 훨씬 강력함. 페이지 로딩 '전'에 실행되어 탐지를 원천 봉쇄.
+            Map<String, Object> cdpParams = new HashMap<>();
+            cdpParams.put("source", "Object.defineProperty(navigator, 'webdriver', { get: () => undefined })");
+            driver.executeCdpCommand("Page.addScriptToEvaluateOnNewDocument", cdpParams);
+
+            // 타임아웃 설정
+            driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(IMPLICIT_WAIT_SECONDS));
+            driver.manage().timeouts().pageLoadTimeout(Duration.ofSeconds(PAGE_LOAD_TIMEOUT_SECONDS));
+
+            log.info("스마트 WebDriver 생성 성공 (OS: {}, Path: /usr/bin/chromium-browser)", os);
+            return driver;
+
+        } catch (Exception e) {
+            log.error("WebDriver 생성 실패: 드라이버 경로 및 설치 상태를 확인하세요.", e);
+            throw new RuntimeException("WebDriver 생성 실패", e);
+        }
+    }
+
+/*
+    private WebDriver createWebDriver() {
+        try {
             // OS 감지
             String os = System.getProperty("os.name").toLowerCase();
             String driverPath;
@@ -151,6 +229,7 @@ public class JobCrawlingServiceImpl implements JobCrawlingService {
             throw new RuntimeException("WebDriver 생성 실패", e);
         }
     }
+*/
 
 
     @PreDestroy
